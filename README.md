@@ -1,6 +1,10 @@
 TIGER
 ------
 
+[![GoDoc](https://godoc.org/github.com/Mparaiso/tiger-go-framework?status.png)](https://godoc.org/Mparaiso/tiger-go-framework)
+
+[![Build Status](https://travis-ci.org/Mparaiso/tiger-go-framework.svg?branch=master)](https://travis-ci.org/Mparaiso/tiger-go-framework)
+
 author: mparaiso <mparaiso@online.fr>
 
 license: GPL-3.0
