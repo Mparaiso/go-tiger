@@ -42,7 +42,8 @@ func TestMapRowsToSliceOfStruct(t *testing.T) {
 			name TEXT NOT NULL,
 			date_creation TIMESTAMP NOT NULL DEFAULT(DATETIME('now'))
 		);`,
-		"INSERT INTO users(name) values('john doe'),('jane doe');",
+		"INSERT INTO users(name) values('john doe');",
+		"INSERT INTO users(name) values('jane doe');",
 	} {
 		_, err := db.Exec(statement)
 		ex.Expect(t, err, nil, "db.Exec("+statement+")")
