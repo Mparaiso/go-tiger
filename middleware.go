@@ -11,6 +11,7 @@ func (se StatusError) Error() string {
 	return http.StatusText(int(se))
 }
 
+// Code returns the status code
 func (se StatusError) Code() int {
 	return int(se)
 }
@@ -24,18 +25,25 @@ type Container interface {
 }
 
 const (
+	// Debug is the level 0 for a logger
 	Debug int = iota
+	// Info is the level 1 for a logger
 	Info
+	// Warning is the level 2 for a logger
 	Warning
+	// Error is the level 3 for a logger
 	Error
+	// Critical i the level 4 for a logger
 	Critical
 )
 
+// LoggerProvider provides a Logger to a container
 type LoggerProvider interface {
 	GetLogger() (Logger, error)
 	MustGetLogger() Logger
 }
 
+// Logger is a logger
 type Logger interface {
 	Log(level int, args ...interface{})
 	LogF(level int, format string, args ...interface{})
@@ -43,14 +51,16 @@ type Logger interface {
 
 // DefaultContainer is the default implementation of the Container
 type DefaultContainer struct {
-	ResponseWriter http.ResponseWriter // ResponseWriter
-	Request        *http.Request       // Request
+	// ResponseWriter is an http.ResponseWriter
+	ResponseWriter http.ResponseWriter
+	// Request is an *http.Request
+	Request *http.Request
 }
 
-// ResponseWriter returns a response writer
+// GetResponseWriter returns a response writer
 func (dc DefaultContainer) GetResponseWriter() http.ResponseWriter { return dc.ResponseWriter }
 
-// Request returns a request
+// GetRequest returns a request
 func (dc DefaultContainer) GetRequest() *http.Request { return dc.Request }
 
 // Error writes an error to the client and logs an error to stdout
@@ -71,6 +81,7 @@ func (h Handler) Wrap(middlewares ...Middleware) Handler {
 	return Queue(middlewares).Finish(h)
 }
 
+// Handle handles a request
 func (h Handler) Handle(c Container) {
 	h(c)
 }
@@ -88,6 +99,13 @@ func (h Handler) ToHandlerFunc(containerFactory func(http.ResponseWriter, *http.
 	}
 }
 
+// ToHandler converts an idiomatic http.HandlerFunc to a Handler
+func ToHandler(handlerFunc func(http.ResponseWriter, *http.Request)) func(Container) {
+	return func(c Container) {
+		handlerFunc(c.GetResponseWriter(), c.GetRequest())
+	}
+}
+
 // ToMiddleware wraps a classic net/http middleware (func(http.HandlerFunc) http.HandlerFunc)
 // into a Middleware compatible with this package
 func ToMiddleware(classicMiddleware func(http.HandlerFunc) http.HandlerFunc) Middleware {
@@ -101,6 +119,8 @@ func ToMiddleware(classicMiddleware func(http.HandlerFunc) http.HandlerFunc) Mid
 //Queue is a reusable queue of middlewares
 type Queue []Middleware
 
+// Then returns a new middleware with middleware argument queued after
+// the current middleware
 func (q Queue) Then(middleware Middleware) Middleware {
 	var current Middleware
 	for _, middleware := range q {
@@ -142,6 +162,7 @@ func (m Middleware) Then(middleware Middleware) Middleware {
 	}
 }
 
+// Finish returns a handler that is preceded by the middleware
 func (m Middleware) Finish(h Handler) Handler {
 	return func(c Container) {
 		m(c, h)

@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"path"
 	"regexp"
-	"strconv"
 )
 
 type contextKeys int8
@@ -108,7 +107,8 @@ func (pm *RegexpMatcher) Match(r *http.Request) bool {
 		originalValues := r.URL.Query()
 		for i, name := range subExNames {
 			if name == "" {
-				name = strconv.FormatInt(int64(i), 10)
+				// name = strconv.FormatInt(int64(i), 10)
+				continue
 			}
 			originalValues.Set(pm.Prefix+name, subMatches[i])
 		}

@@ -95,7 +95,6 @@ func NewTestModule() *TestModule {
 func (module TestModule) Connect(collection *app.RouteCollection) {
 	collection.
 		Use(func(container app.Container, next app.Handler) {
-			print("executed 2")
 			next(Decorate(container))
 		}).
 		Get("/", func(c app.Container) {
