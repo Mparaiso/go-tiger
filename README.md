@@ -1,9 +1,9 @@
 TIGER
 ------
 
-[![GoDoc](https://godoc.org/github.com/Mparaiso/go-tiger-framework?status.png)](https://godoc.org/github.com/Mparaiso/go-tiger-framework)
+[![GoDoc](https://godoc.org/github.com/Mparaiso/go-tiger?status.png)](https://godoc.org/github.com/Mparaiso/go-tiger)
 
-[![Build Status](https://travis-ci.org/Mparaiso/go-tiger-framework.svg?branch=master)](https://travis-ci.org/Mparaiso/go-tiger-framework)
+[![Build Status](https://travis-ci.org/Mparaiso/go-tiger.svg?branch=master)](https://travis-ci.org/Mparaiso/go-tiger)
 
 author: mparaiso <mparaiso@online.fr>
 
@@ -18,7 +18,7 @@ other router package in Go.
 
 #### Installation
 
-    go get github.com/mparaiso/go-tiger-framework
+    go get github.com/mparaiso/go-tiger
 
 #### Features
 
