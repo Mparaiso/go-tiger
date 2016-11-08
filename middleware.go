@@ -3,9 +3,9 @@
 //    Licensed under the Apache License, Version 2.0 (the "License");
 //    you may not use this file except in compliance with the License.
 //    You may obtain a copy of the License at
-
+//
 //      http://www.apache.org/licenses/LICENSE-2.0
-
+//
 //    Unless required by applicable law or agreed to in writing, software
 //    distributed under the License is distributed on an "AS IS" BASIS,
 //    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -125,8 +125,15 @@ func (h Handler) ToHandlerFunc() func(http.ResponseWriter, *http.Request) {
 	}
 }
 
-// ToHandler converts an idiomatic http.HandlerFunc to a Handler
-func ToHandler(handlerFunc func(http.ResponseWriter, *http.Request)) func(Container) {
+// FromHandler transforms a http.Handler into a tiger.Handle
+func FromHandler(handler http.Handler) func(Container) {
+	return func(c Container) {
+		handler.ServeHTTP(c.GetResponseWriter(), c.GetRequest())
+	}
+}
+
+// FromHandlerFunc transforms a http.HandlerFunc into a tiger.Handle
+func FromHandlerFunc(handlerFunc func(http.ResponseWriter, *http.Request)) func(Container) {
 	return func(c Container) {
 		handlerFunc(c.GetResponseWriter(), c.GetRequest())
 	}

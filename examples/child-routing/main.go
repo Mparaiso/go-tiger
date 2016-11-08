@@ -38,7 +38,7 @@ func main() {
 		}
 	}))
 	// Use an idiomatic http.Handlerfunc as the app index
-	router.Get("/", tiger.ToHandler(func(w http.ResponseWriter, r *http.Request) {
+	router.Get("/", tiger.FromHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `
 		<html>
 			<body>

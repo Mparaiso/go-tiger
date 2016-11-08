@@ -99,7 +99,7 @@ func ExampleToMiddleware() {
 
 	convertedMiddleware.
 		Finish(func(c tiger.Container) { c.GetResponseWriter().Write([]byte("done")) }).
-		Handle(&tiger.DefaultContainer{response, request})
+		Handle(&tiger.DefaultContainer{ResponseWriter: response, Request: request})
 
 	fmt.Println(response.Header().Get("Access-Control-Allow-Origin"))
 	fmt.Println(response.Body.String())
