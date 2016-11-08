@@ -144,6 +144,9 @@ func (routeMeta RouteMeta) Generate(attributes map[string]interface{}) string {
 		}
 		return fmt.Sprint(value)
 	})
+	if len(attributes) == 0 {
+		return path
+	}
 	values := url.Values{}
 	for key, value := range attributes {
 		values.Set(key, url.QueryEscape(fmt.Sprint(value)))
@@ -156,11 +159,19 @@ func (routeMeta RouteMeta) Generate(attributes map[string]interface{}) string {
 type RouteMetas []*RouteMeta
 
 // FindByName selects a *RouteMeta by name
+// this method silently fails and will always return
+// a route meta even if it isn't found. You'll need to
+// compare to ZeroRouteMeta if you want to know whether
+// a route was found or not.
 func (routeMetas RouteMetas) FindByName(name string) *RouteMeta {
 	for _, routeMeta := range routeMetas {
 		if routeMeta.Name == name {
 			return routeMeta
 		}
 	}
-	return nil
+	return ZeroRouteMeta
 }
+
+var (
+	ZeroRouteMeta = new(RouteMeta)
+)
