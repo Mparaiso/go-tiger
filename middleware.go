@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	"github.com/Mparaiso/go-tiger/injector"
+	"github.com/Mparaiso/go-tiger/logger"
 )
 
 // StatusError is a status error
@@ -42,6 +43,10 @@ type Container interface {
 	GetRequest() *http.Request
 	Error(err error, statusCode int)
 	Redirect(url string, statusCode int)
+	GetRouteMetadatas() RouteMetas
+	SetRouteMetadatas(RouteMetas)
+	GetLogger() logger.Logger
+	IsDebug() bool
 }
 
 // DefaultContainer is the default implementation of the Container
@@ -49,7 +54,10 @@ type DefaultContainer struct {
 	// ResponseWriter is an http.ResponseWriter
 	ResponseWriter http.ResponseWriter
 	// Request is an *http.Request
-	Request *http.Request
+	Request        *http.Request
+	RouteMetadatas RouteMetas
+	Debug          bool
+	Logger         logger.Logger
 }
 
 // GetResponseWriter returns a response writer
@@ -58,14 +66,42 @@ func (dc DefaultContainer) GetResponseWriter() http.ResponseWriter { return dc.R
 // GetRequest returns a request
 func (dc DefaultContainer) GetRequest() *http.Request { return dc.Request }
 
+// GetLogger returns a logger
+func (dc *DefaultContainer) GetLogger() logger.Logger {
+	if dc.Logger == nil {
+		dc.Logger = logger.NewDefaultLogger()
+	}
+	return dc.Logger
+}
+
+// IsDebug returns true if the router is in debug mode
+func (dc DefaultContainer) IsDebug() bool { return dc.Debug }
+
 // Error writes an error to the client and logs an error to stdout
 func (dc DefaultContainer) Error(err error, statusCode int) {
-	http.Error(dc.GetResponseWriter(), err.Error(), statusCode)
+	if dc.IsDebug() {
+		http.Error(dc.GetResponseWriter(), err.Error(), statusCode)
+
+	} else {
+		dc.GetLogger().LogF(logger.Error, "%s", err)
+		http.Error(dc.GetResponseWriter(), StatusError(statusCode).Error(), statusCode)
+	}
 }
 
 // Redirect replies with a redirection
 func (dc DefaultContainer) Redirect(url string, statusCode int) {
 	http.Redirect(dc.GetResponseWriter(), dc.GetRequest(), url, statusCode)
+}
+
+// SetRouteMetadatas sets the route metadatas
+// They can be used for the creation of URL from a route name
+func (dc *DefaultContainer) SetRouteMetadatas(metadatas RouteMetas) {
+	dc.RouteMetadatas = metadatas
+}
+
+// GetRouteMetadatas returns RouteMetas
+func (dc DefaultContainer) GetRouteMetadatas() RouteMetas {
+	return dc.RouteMetadatas
 }
 
 // Handler is a controller that takes a context
@@ -82,14 +118,9 @@ func (h Handler) Handle(c Container) {
 }
 
 // ToHandlerFunc converts Handler to http.Handler
-func (h Handler) ToHandlerFunc(containerFactory func(http.ResponseWriter, *http.Request) Container) func(http.ResponseWriter, *http.Request) {
+func (h Handler) ToHandlerFunc() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var c Container
-		if containerFactory == nil {
-			c = &DefaultContainer{w, r}
-		} else {
-			c = containerFactory(w, r)
-		}
+		c := &DefaultContainer{ResponseWriter: w, Request: r}
 		h(c)
 	}
 }
@@ -106,7 +137,8 @@ func ToHandler(handlerFunc func(http.ResponseWriter, *http.Request)) func(Contai
 func ToMiddleware(classicMiddleware func(http.HandlerFunc) http.HandlerFunc) Middleware {
 	return func(c Container, next Handler) {
 		classicMiddleware(func(w http.ResponseWriter, r *http.Request) {
-			next(&DefaultContainer{w, r})
+
+			next(c)
 		})(c.GetResponseWriter(), c.GetRequest())
 	}
 }
