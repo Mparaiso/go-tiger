@@ -35,13 +35,21 @@ type Matcher interface {
 
 // Pattern returns a regexp matcher from a string
 // like "/:foo/:bar"
+// a special case /:foo/part/:*bar allows the handling of '/' in path
 func Pattern(pattern, pathPrefix string, queryValuePrefix ...string) *RegexpMatcher {
-	pattern = regexp.MustCompile(`:(\w+)(!:\(.*\))`).ReplaceAllString(pattern, `${1}(\w+)`)
+	//pattern = regexp.MustCompile(`:(\w+)(!:\(.*\))`).ReplaceAllString(pattern, `${1}(\w+)`)
+	// re matches simple words
 	re := regexp.MustCompile(`:(\w+)`)
-	pattern = path.Join("^/", regexp.QuoteMeta(pathPrefix), re.ReplaceAllString(pattern, "(?P<${1}>[^\\s /]+)"), "/?$")
+	// re2 matches words with "/"
+	re2 := regexp.MustCompile(`:\*(\w+)$`)
+	pattern = re.ReplaceAllString(pattern, "(?P<${1}>[^\\s /]+)")
+	pattern = re2.ReplaceAllString(pattern, "(?P<${1}>[^\\s]+)")
+	// add the pathPrefix at the beginning of the pattern
+	pattern = path.Join("^/", regexp.QuoteMeta(pathPrefix), pattern, "/?$")
 	if pattern == "^/?" {
 		pattern = "^/$"
 	}
+	// returns a new regexp matcher
 	return NewRegexMatcher(regexp.MustCompile(pattern), queryValuePrefix...)
 }
 

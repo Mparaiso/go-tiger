@@ -37,6 +37,23 @@ func ExamplePattern() {
 	// true users 22a39b6
 
 }
+
+func ExamplePattern_Second() {
+	matcher := r.Pattern("/:foo/:*bar", "/root")
+	fmt.Println(matcher.Regexp.String())
+
+	r, err := http.NewRequest("GET", "http://example.com/root/static-assets/some/path/to/file/image.jpg", nil)
+	if err != nil {
+		fmt.Println(err)
+	} else {
+		isMatched := matcher.Match(r)
+		fmt.Println(isMatched, r.URL.Query().Get(":foo"), r.URL.Query().Get(":bar"))
+	}
+	// Output:
+	// ^/root/(?P<foo>[^\s /]+)/(?P<bar>[^\s]+)/?$
+	// true static-assets some/path/to/file/image.jpg
+
+}
 func ExampleRouter() {
 	approuter := &r.RequestMatcher{
 		[]r.MatcherProvider{
