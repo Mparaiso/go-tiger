@@ -44,14 +44,17 @@ type RouterOptions struct {
 	UrlVarPrefix string
 }
 
+// ContainerFactory allows providing a custom container to the Router
 type ContainerFactory interface {
 	GetContainer(http.ResponseWriter, *http.Request) Container
 }
 
+// DefaultContainerFactory is the default implementation of ContainerFactory
 type DefaultContainerFactory struct{}
 
+// GetContainer returns a new Container
 func (d DefaultContainerFactory) GetContainer(w http.ResponseWriter, r *http.Request) Container {
-	return DefaultContainer{w, r}
+	return &DefaultContainer{ResponseWriter: w, Request: r}
 }
 
 type Router struct {
@@ -72,23 +75,27 @@ func NewRouterWithOptions(routerOptions *RouterOptions) *Router {
 
 // Compile returns an http.Handler to be use with http.Server
 func (r *Router) Compile() http.Handler {
-	routes := Routes(r.RouteCollection.Compile()).ToMatcherProviders()
+	routes := Routes(r.RouteCollection.Compile())
 
-	return &httpHandler{routes, r.ContainerFactory}
+	return &httpHandler{routes, r.ContainerFactory, routes.GetMetadatas()}
 }
 
 type httpHandler struct {
-	MatcherProviders []matcher.MatcherProvider
+	Routes Routes
 	ContainerFactory
+	RouteMetadatas RouteMetas
 }
 
 func (h httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	container := h.ContainerFactory.GetContainer(w, r)
-	requestMatcher := matcher.NewRequestMatcher(h.MatcherProviders)
+	container.SetRouteMetadatas(h.RouteMetadatas)
+	requestMatcher := matcher.NewRequestMatcher(h.Routes.ToMatcherProviders())
 	match := requestMatcher.Match(r)
 	if match != nil {
 		route := match.(*Route)
-		Queue(route.Middlewares).Finish(route.Handler).Handle(container)
+		Queue(route.Middlewares).
+			Finish(route.Handler).
+			Handle(container)
 	} else {
 		container.Error(StatusError(http.StatusNotFound), http.StatusNotFound)
 	}
