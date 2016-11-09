@@ -80,7 +80,7 @@ func (r *RouteCollection) Match(methods []string, pattern string, handler Handle
 	return route
 }
 
-func (r *RouteCollection) CompileRoute(route *Route) *Route {
+func (r *RouteCollection) compileRoute(route *Route) *Route {
 	compiledRoute := &Route{
 		Handler:     route.Handler,
 		Matchers:    route.Matchers,
@@ -123,7 +123,7 @@ func (r *RouteCollection) Compile() []*Route {
 	}
 
 	for _, route := range r.routes {
-		compiledRoute := r.CompileRoute(route)
+		compiledRoute := r.compileRoute(route)
 		routes = append(routes, compiledRoute)
 	}
 
