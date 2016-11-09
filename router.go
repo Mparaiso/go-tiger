@@ -16,17 +16,19 @@ package tiger
 
 import (
 	"net/http"
-	"sync"
 
 	"github.com/Mparaiso/go-tiger/matcher"
 )
 
+// ContainerFactoryFunc transforms a function into a ContainerFactory
 type ContainerFactoryFunc func(http.ResponseWriter, *http.Request) Container
 
+// GetContainer returns the container
 func (c ContainerFactoryFunc) GetContainer(w http.ResponseWriter, r *http.Request) Container {
 	return c(w, r)
 }
 
+// RouterOptions are the optional settings of a router
 type RouterOptions struct {
 	// ContainerFactory is used to create
 	// a container passed to each handler
@@ -41,7 +43,7 @@ type RouterOptions struct {
 	//
 	// 		foo := request.URL.Query().Get(":foo")
 	//
-	UrlVarPrefix string
+	URLVarPrefix string
 }
 
 // ContainerFactory allows providing a custom container to the Router
@@ -57,20 +59,27 @@ func (d DefaultContainerFactory) GetContainer(w http.ResponseWriter, r *http.Req
 	return &DefaultContainer{ResponseWriter: w, Request: r}
 }
 
+// Router handles routing for route handlers
 type Router struct {
 	*RouteCollection
 	*RouterOptions
-	*sync.Once
 
 	matcherProviders matcher.MatcherProviders
 }
 
+// NewRouter returns a new router
 func NewRouter() *Router {
-	return &Router{NewRouteCollection(), &RouterOptions{ContainerFactory: &DefaultContainerFactory{}}, new(sync.Once), matcher.MatcherProviders{}}
+	return &Router{NewRouteCollection(), &RouterOptions{ContainerFactory: &DefaultContainerFactory{}}, matcher.MatcherProviders{}}
 }
 
+// NewRouterWithOptions returns a new router with some options
 func NewRouterWithOptions(routerOptions *RouterOptions) *Router {
-	return &Router{&RouteCollection{UrlVarPrefix: routerOptions.UrlVarPrefix}, routerOptions, new(sync.Once), matcher.MatcherProviders{}}
+	return &Router{&RouteCollection{UrlVarPrefix: routerOptions.URLVarPrefix}, routerOptions, matcher.MatcherProviders{}}
+}
+
+// SetContainerFactoryFunc sets a function as the container factory
+func (r *Router) SetContainerFactoryFunc(factoryFunction func(w http.ResponseWriter, r *http.Request) Container) {
+	r.ContainerFactory = ContainerFactoryFunc(factoryFunction)
 }
 
 // Compile returns an http.Handler to be use with http.Server
