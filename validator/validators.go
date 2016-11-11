@@ -82,6 +82,7 @@ func StringNotEmptyValidator(field string, value string, errors Error) {
 	}
 }
 
+// StringEmpty returns true if the string is empty
 func StringEmpty(value string) bool {
 	return strings.Trim(value, "\t\r ") == ""
 }
