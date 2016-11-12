@@ -1,3 +1,17 @@
+//    Copyright (C) 2016  mparaiso <mparaiso@online.fr>
+//
+//    Licensed under the Apache License, Version 2.0 (the "License");
+//    you may not use this file except in compliance with the License.
+//    You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+//    Unless required by applicable law or agreed to in writing, software
+//    distributed under the License is distributed on an "AS IS" BASIS,
+//    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//    See the License for the specific language governing permissions and
+//    limitations under the License.
+
 package acl
 
 // Type is a rule type
@@ -25,9 +39,9 @@ type Rule struct {
 	Type
 	Role
 	Resource
-	AllPriviledges bool
+	AllPrivileges bool
 	Assertion
-	Priviledge string
+	Privilege string
 }
 
 // ResourceNode is a node in a tree of nodes
@@ -157,31 +171,31 @@ func (acl *ACL) HasResource(resource Resource) bool {
 	}
 	return false
 }
-func (acl *ACL) setRule(operation Operation, Type Type, role Role, resource Resource, priviledges ...string) *ACL {
+func (acl *ACL) setRule(operation Operation, Type Type, role Role, resource Resource, privileges ...string) *ACL {
 
 	switch operation {
 	case Add:
-		if len(priviledges) > 0 {
-			for _, priviledge := range priviledges {
+		if len(privileges) > 0 {
+			for _, privilege := range privileges {
 				acl.rules = append(
-					[]*Rule{{Type: Type, Role: role, Resource: resource, Priviledge: priviledge}},
+					[]*Rule{{Type: Type, Role: role, Resource: resource, Privilege: privilege}},
 					acl.rules...)
 			}
 		} else {
-			acl.rules = append([]*Rule{{Type: Type, Role: role, Resource: resource, AllPriviledges: true}}, acl.rules...)
+			acl.rules = append([]*Rule{{Type: Type, Role: role, Resource: resource, AllPrivileges: true}}, acl.rules...)
 		}
 	case Remove:
-		if len(priviledges) > 0 {
-			for _, priviledge := range priviledges {
+		if len(privileges) > 0 {
+			for _, privilege := range privileges {
 				for i, rule := range acl.rules {
-					if rule.Type == Type && role.GetRoleID() == rule.GetRoleID() && rule.GetResourceID() == resource.GetResourceID() && priviledge == rule.Priviledge && rule.Assertion == nil && rule.AllPriviledges == false {
+					if rule.Type == Type && role.GetRoleID() == rule.GetRoleID() && rule.GetResourceID() == resource.GetResourceID() && privilege == rule.Privilege && rule.Assertion == nil && rule.AllPrivileges == false {
 						acl.rules = append(acl.rules[0:i], acl.rules[i+1:len(acl.rules)]...)
 					}
 				}
 			}
 		} else {
 			for i, rule := range acl.rules {
-				if rule.Type == Type && role.GetRoleID() == rule.GetRoleID() && rule.GetResourceID() == resource.GetResourceID() && rule.AllPriviledges == true {
+				if rule.Type == Type && role.GetRoleID() == rule.GetRoleID() && rule.GetResourceID() == resource.GetResourceID() && rule.AllPrivileges == true {
 					acl.rules = append(acl.rules[0:i], acl.rules[i+1:len(acl.rules)]...)
 				}
 			}
@@ -190,22 +204,22 @@ func (acl *ACL) setRule(operation Operation, Type Type, role Role, resource Reso
 	return acl
 }
 
-// IsAllowed return true if role is allowed all priviledges on resource
-func (acl *ACL) IsAllowed(role Role, resource Resource, priviledges ...string) bool {
-	for _, priviledge := range priviledges {
-		if !acl.isAllowed(role, resource, priviledge) {
+// IsAllowed return true if role is allowed all privileges on resource
+func (acl *ACL) IsAllowed(role Role, resource Resource, privileges ...string) bool {
+	for _, privilege := range privileges {
+		if !acl.isAllowed(role, resource, privilege) {
 			return false
 		}
 	}
 	return true
 }
 
-func (acl *ACL) isAllowed(role Role, resource Resource, priviledge string) bool {
+func (acl *ACL) isAllowed(role Role, resource Resource, privilege string) bool {
 	// check for a direct rule
 	for _, rule := range acl.rules {
 		if (rule.Role != nil && role != nil && role.GetRoleID() == rule.GetRoleID()) || (rule.Role == nil) {
 			if (rule.Resource != nil && resource != nil && rule.GetResourceID() == resource.GetResourceID()) || (rule.Resource == nil) {
-				if rule.AllPriviledges || rule.Priviledge == priviledge {
+				if rule.AllPrivileges || rule.Privilege == privilege {
 					if rule.Type == Deny {
 						return false
 					}
@@ -219,7 +233,7 @@ func (acl *ACL) isAllowed(role Role, resource Resource, priviledge string) bool 
 	if resource != nil && acl.HasResource(resource) {
 		if node := acl.ResourceTree[resource.GetResourceID()]; node != nil {
 			if node.Parent != nil {
-				return acl.isAllowed(role, node.Parent, priviledge)
+				return acl.isAllowed(role, node.Parent, privilege)
 			}
 		}
 	}
@@ -227,7 +241,7 @@ func (acl *ACL) isAllowed(role Role, resource Resource, priviledge string) bool 
 	if role != nil && acl.HasRole(role) {
 		if node := acl.RoleTree[role.GetRoleID()]; node != nil {
 			if node.Parent != nil {
-				return acl.isAllowed(node.Parent, resource, priviledge)
+				return acl.isAllowed(node.Parent, resource, privilege)
 			}
 		}
 	}
@@ -235,23 +249,23 @@ func (acl *ACL) isAllowed(role Role, resource Resource, priviledge string) bool 
 }
 
 // Allow adds an allow rule
-func (acl *ACL) Allow(role Role, resource Resource, priviledge ...string) *ACL {
-	return acl.setRule(Add, Allow, role, resource, priviledge...)
+func (acl *ACL) Allow(role Role, resource Resource, privilege ...string) *ACL {
+	return acl.setRule(Add, Allow, role, resource, privilege...)
 }
 
 // Deny adds a deny rule
-func (acl *ACL) Deny(role Role, resource Resource, priviledge ...string) *ACL {
-	return acl.setRule(Add, Deny, role, resource, priviledge...)
+func (acl *ACL) Deny(role Role, resource Resource, privilege ...string) *ACL {
+	return acl.setRule(Add, Deny, role, resource, privilege...)
 }
 
 // RemoveAllow removes a allow rule
-func (acl *ACL) RemoveAllow(role Role, resource Resource, priviledge ...string) *ACL {
-	return acl.setRule(Remove, Allow, role, resource, priviledge...)
+func (acl *ACL) RemoveAllow(role Role, resource Resource, privilege ...string) *ACL {
+	return acl.setRule(Remove, Allow, role, resource, privilege...)
 }
 
 // RemoveDeny deny removes a deny rule
-func (acl *ACL) RemoveDeny(role Role, resource Resource, priviledge ...string) *ACL {
-	return acl.setRule(Remove, Deny, role, resource, priviledge...)
+func (acl *ACL) RemoveDeny(role Role, resource Resource, privilege ...string) *ACL {
+	return acl.setRule(Remove, Deny, role, resource, privilege...)
 }
 
 // InheritsResource retruns true if resource is a child of parent
