@@ -21,62 +21,76 @@ import (
 	"strings"
 )
 
-// Error is a validation error
-type Error interface {
+// ValidationError allows to collect
+// multiple errors from different fields (in a form for instance)
+// and get them through a map[string][]string to be displayed in
+// an html page or a API response.
+type ValidationError interface {
 	HasErrors() bool
 	Append(key, value string)
+	GetErrors() map[string][]string
+	ReturnNilOrErrors() ValidationError
 	Error() string
+	MarshalXML(e *xml.Encoder, start xml.StartElement) error
 }
 
-// ConcreteError holds errors in a map
-type ConcreteError map[string][]string
-
-func NewConcreteError() *ConcreteError {
-	c := ConcreteError(map[string][]string{})
-	return &c
+type concreteValidationError struct {
+	errors map[string][]string
 }
 
-// Append adds an new error to a map
-func (v ConcreteError) Append(key string, value string) {
-	v[key] = append(v[key], value)
+// NewValidationError returns a ValidationErron
+func NewValidationError() ValidationError {
+	return &concreteValidationError{errors: map[string][]string{}}
 }
 
-func (v *ConcreteError) GetErrors() map[string][]string {
-	return *v
+// Append adds an error to a map
+func (validationError *concreteValidationError) Append(field string, value string) {
+	validationError.errors[field] = append(validationError.errors[field], value)
 }
 
-func (v ConcreteError) Error() string {
-	return fmt.Sprintf("%#v", v)
+// GetErrors gets all errors as a map
+func (validationError *concreteValidationError) GetErrors() map[string][]string {
+	return validationError.errors
+}
+
+// ReturnNilOrErrors is an helper that will return nil if there is no errors
+// useful when returning a Error interface from validation
+func (validationError *concreteValidationError) ReturnNilOrErrors() ValidationError {
+	if validationError.HasErrors() {
+		return validationError
+	}
+	return nil
+}
+
+func (validationError concreteValidationError) Error() string {
+	return fmt.Sprintf("%#v", validationError.errors)
 }
 
 // HasErrors returns true if error exists
-func (v ConcreteError) HasErrors() bool {
-	return len(v) != 0
+func (validationError concreteValidationError) HasErrors() bool {
+	return len(validationError.errors) != 0
 }
 
 // MarshalXML marshalls a ConcreteError
-func (v ConcreteError) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
-	type Errors struct {
-		Field []struct {
-			Name  string
-			Error []string
-		}
-	}
-	errors := Errors{[]struct {
+func (validationError concreteValidationError) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
+	type Error struct {
 		Name  string
 		Error []string
-	}{}}
-	for key, value := range v {
-		errors.Field = append(errors.Field, struct {
-			Name  string
-			Error []string
-		}{key, value})
+	}
+
+	type Errors struct {
+		Error []Error
+	}
+
+	errors := Errors{}
+	for key, value := range validationError.errors {
+		errors.Error = append(errors.Error, Error{key, value})
 	}
 	return e.EncodeElement(errors, start)
 }
 
 // StringNotEmptyValidator checks if a string is empty
-func StringNotEmptyValidator(field string, value string, errors Error) {
+func StringNotEmptyValidator(field string, value string, errors ValidationError) {
 	if StringEmpty(value) {
 		errors.Append(field, "should not be empty")
 	}
@@ -88,48 +102,48 @@ func StringEmpty(value string) bool {
 }
 
 // StringMinLengthValidator validates a string by minimum length
-func StringMinLengthValidator(field, value string, minlength int, errors Error) {
+func StringMinLengthValidator(field, value string, minlength int, errors ValidationError) {
 	if len(value) < minlength {
 		errors.Append(field, fmt.Sprintf("should be at least %d character long", minlength))
 	}
 }
 
 // StringMaxLengthValidator validates a string by maximum length
-func StringMaxLengthValidator(field, value string, maxlength int, errors Error) {
+func StringMaxLengthValidator(field, value string, maxlength int, errors ValidationError) {
 	if len(value) > maxlength {
 		errors.Append(field, "should be at most  %d character long")
 	}
 }
 
 // StringLengthValidator validates a string by minimum and maxium length
-func StringLengthValidator(field, value string, minLength int, maxLength int, errors Error) {
+func StringLengthValidator(field, value string, minLength int, maxLength int, errors ValidationError) {
 	StringMinLengthValidator(field, value, minLength, errors)
 	StringMaxLengthValidator(field, value, maxLength, errors)
 }
 
 // MatchValidator validates a string by an expected value
-func MatchValidator(field1 string, field2 string, value1, value2 interface{}, errors Error) {
+func MatchValidator(field1 string, field2 string, value1, value2 interface{}, errors ValidationError) {
 	if value1 != value2 {
 		errors.Append(field1, fmt.Sprintf("should match %s ", field2))
 	}
 }
 
 // EmailValidator validates an email
-func EmailValidator(field, value string, errors Error) {
+func EmailValidator(field, value string, errors ValidationError) {
 	if !isEmail(value) {
 		errors.Append(field, "should be a valid email")
 	}
 }
 
 // URLValidator validates a URL
-func URLValidator(field, value string, errors Error) {
+func URLValidator(field, value string, errors ValidationError) {
 	if !IsURL(value) {
 		errors.Append(field, "should be a valid URL and begin with http:// or https:// ")
 	}
 }
 
 // PatternValidator valides a value according to a regexp pattern
-func PatternValidator(field, value string, pattern *regexp.Regexp, errors Error) {
+func PatternValidator(field, value string, pattern *regexp.Regexp, errors ValidationError) {
 	if !pattern.MatchString(value) {
 		errors.Append(field, "should match the following pattern : "+pattern.String())
 	}
