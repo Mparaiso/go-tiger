@@ -102,6 +102,7 @@ func (h httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	match := requestMatcher.Match(r)
 	if match != nil {
 		route := match.(*Route)
+		container.SetCurrentRouteMetadata(route.GetMeta())
 		Queue(route.Middlewares).
 			Finish(route.Handler).
 			Handle(container)
