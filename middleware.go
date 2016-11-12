@@ -45,6 +45,8 @@ type Container interface {
 	Redirect(url string, statusCode int)
 	GetRouteMetadatas() RouteMetas
 	SetRouteMetadatas(RouteMetas)
+	GetCurrentRouteMetadata() *RouteMeta
+	SetCurrentRouteMetadata(*RouteMeta)
 	GetLogger() logger.Logger
 	IsDebug() bool
 }
@@ -54,10 +56,11 @@ type DefaultContainer struct {
 	// ResponseWriter is an http.ResponseWriter
 	ResponseWriter http.ResponseWriter
 	// Request is an *http.Request
-	Request        *http.Request
-	RouteMetadatas RouteMetas
-	Debug          bool
-	Logger         logger.Logger
+	Request              *http.Request
+	RouteMetadatas       RouteMetas
+	CurrentRouteMetadada *RouteMeta
+	Debug                bool
+	Logger               logger.Logger
 }
 
 // GetResponseWriter returns a response writer
@@ -102,6 +105,13 @@ func (dc *DefaultContainer) SetRouteMetadatas(metadatas RouteMetas) {
 // GetRouteMetadatas returns RouteMetas
 func (dc DefaultContainer) GetRouteMetadatas() RouteMetas {
 	return dc.RouteMetadatas
+}
+func (dc DefaultContainer) GetCurrentRouteMetadata() *RouteMeta {
+	return dc.CurrentRouteMetadada
+}
+
+func (dc DefaultContainer) SetCurrentRouteMetadata(metadata *RouteMeta) {
+	dc.CurrentRouteMetadada = metadata
 }
 
 // Handler is a controller that takes a context
