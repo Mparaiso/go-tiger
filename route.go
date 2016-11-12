@@ -66,9 +66,9 @@ func (r *Route) Match(matchers ...matcher.Matcher) *Route {
 
 // String returns a string representation of the route
 func (r Route) String() string {
-	return fmt.Sprintf("Route{Name:%s,Path:%s,Methods:%+v,Handler:%+v,Middlewares:%+v}", r.GetMeta().Name, r.GetMeta().Pattern,
-		r.GetMeta().Methods,
-		r.Handler, r.Middlewares)
+	return fmt.Sprintf("Route{Name:%s,Path:%s,Methods:%+v,Middlewares:%+v}",
+		r.GetName(), r.GetMeta().GetPath(), r.GetMeta().Methods, r.Middlewares,
+	)
 }
 
 // GetMatchers return the request matchers
@@ -107,16 +107,16 @@ type RouteMeta struct {
 	// ExtraData holds extra metadata
 	// It can be used to add comments to routes
 	// or annotations, in order to support Swagger for instance
-	ExtraData map[string]interface{}
+	ExtraData map[interface{}]interface{}
 }
 
 // Get gets ExtraData by key
-func (routeMeta *RouteMeta) Get(key string) interface{} {
+func (routeMeta *RouteMeta) Get(key interface{}) interface{} {
 	return routeMeta.ExtraData[key]
 }
 
 // Set sets ExtraData
-func (routeMeta *RouteMeta) Set(key string, value interface{}) *RouteMeta {
+func (routeMeta *RouteMeta) Set(key interface{}, value interface{}) *RouteMeta {
 	routeMeta.ExtraData[key] = value
 	return routeMeta
 }
