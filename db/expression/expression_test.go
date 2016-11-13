@@ -3,7 +3,7 @@ package expression_test
 import (
 	"fmt"
 
-	. "github.com/Mparaiso/go-tiger/db/query/expression"
+	. "github.com/Mparaiso/go-tiger/db/expression"
 )
 
 func ExampleExpression() {
