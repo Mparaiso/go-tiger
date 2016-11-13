@@ -29,7 +29,7 @@ type ValidationError interface {
 	HasErrors() bool
 	Append(key, value string)
 	GetErrors() map[string][]string
-	ReturnNilOrErrors() ValidationError
+	ReturnNilOrErrors() error
 	Error() string
 	MarshalXML(e *xml.Encoder, start xml.StartElement) error
 }
@@ -55,7 +55,7 @@ func (validationError *concreteValidationError) GetErrors() map[string][]string 
 
 // ReturnNilOrErrors is an helper that will return nil if there is no errors
 // useful when returning a Error interface from validation
-func (validationError *concreteValidationError) ReturnNilOrErrors() ValidationError {
+func (validationError *concreteValidationError) ReturnNilOrErrors() error {
 	if validationError.HasErrors() {
 		return validationError
 	}
