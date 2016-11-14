@@ -17,6 +17,7 @@ package validator
 import (
 	"encoding/xml"
 	"fmt"
+	"reflect"
 	"regexp"
 	"strings"
 )
@@ -28,32 +29,32 @@ import (
 type ValidationError interface {
 	HasErrors() bool
 	Append(key, value string)
-	GetErrors() map[string][]string
+	GetValidationErrors() map[string][]string
 	ReturnNilOrErrors() error
 	Error() string
 	MarshalXML(e *xml.Encoder, start xml.StartElement) error
 }
 
 type concreteValidationError struct {
-	errors map[string][]string
+	Errors map[string][]string
 }
 
 // NewValidationError returns a ValidationErron
 func NewValidationError() ValidationError {
-	return &concreteValidationError{errors: map[string][]string{}}
+	return &concreteValidationError{Errors: map[string][]string{}}
 }
 
 // Append adds an error to a map
 func (validationError *concreteValidationError) Append(field string, value string) {
-	validationError.errors[field] = append(validationError.errors[field], value)
+	validationError.Errors[field] = append(validationError.Errors[field], value)
 }
 
-// GetErrors gets all errors as a map
-func (validationError *concreteValidationError) GetErrors() map[string][]string {
-	return validationError.errors
+// GetErrors gets all Errors as a map
+func (validationError *concreteValidationError) GetValidationErrors() map[string][]string {
+	return validationError.Errors
 }
 
-// ReturnNilOrErrors is an helper that will return nil if there is no errors
+// ReturnNilOrErrors is an helper that will return nil if there is no Errors
 // useful when returning a Error interface from validation
 func (validationError *concreteValidationError) ReturnNilOrErrors() error {
 	if validationError.HasErrors() {
@@ -63,12 +64,12 @@ func (validationError *concreteValidationError) ReturnNilOrErrors() error {
 }
 
 func (validationError concreteValidationError) Error() string {
-	return fmt.Sprintf("%#v", validationError.errors)
+	return fmt.Sprintf("%#v", validationError.Errors)
 }
 
 // HasErrors returns true if error exists
 func (validationError concreteValidationError) HasErrors() bool {
-	return len(validationError.errors) != 0
+	return len(validationError.Errors) != 0
 }
 
 // MarshalXML marshalls a ConcreteError
@@ -83,10 +84,24 @@ func (validationError concreteValidationError) MarshalXML(e *xml.Encoder, start 
 	}
 
 	errors := Errors{}
-	for key, value := range validationError.errors {
+	for key, value := range validationError.Errors {
 		errors.Error = append(errors.Error, Error{key, value})
 	}
 	return e.EncodeElement(errors, start)
+}
+
+// EqualValidator checks if 2 values are equal
+func EqualValidator(field string, value, expectedValue interface{}, errors ValidationError) {
+	if !reflect.DeepEqual(value, expectedValue) {
+		errors.Append(field, fmt.Sprintf("should be equal to %v", expectedValue))
+	}
+}
+
+// NotEqualValidator checks if 2 values are not equal
+func NotEqualValidator(field string, value, unexpectedValue interface{}, errors ValidationError) {
+	if reflect.DeepEqual(value, unexpectedValue) {
+		errors.Append(field, fmt.Sprintf("should not be equal to %v", unexpectedValue))
+	}
 }
 
 // StringNotEmptyValidator checks if a string is empty
