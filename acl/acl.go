@@ -15,16 +15,16 @@
 package acl
 
 // Type is a rule type
-type Type byte
+type Type string
 
 // Operation is a rule management operation
 type Operation byte
 
 const (
 	// Allow is an allow rule type
-	Allow Type = iota
+	Allow Type = "Allow"
 	// Deny is a deny rule type
-	Deny
+	Deny Type = "Deny"
 )
 
 const (
@@ -62,12 +62,12 @@ type RoleNode struct {
 type ACL struct {
 	RoleTree     map[string]*RoleNode
 	ResourceTree map[string]*ResourceNode
-	rules        []*Rule
+	Rules        []*Rule
 }
 
 // NewACL returns a new access control list
 func NewACL() *ACL {
-	return &ACL{RoleTree: map[string]*RoleNode{}, ResourceTree: map[string]*ResourceNode{}, rules: []*Rule{}}
+	return &ACL{RoleTree: map[string]*RoleNode{}, ResourceTree: map[string]*ResourceNode{}, Rules: []*Rule{}}
 }
 
 // GetRole returns the Role or nil if not exists
@@ -100,6 +100,10 @@ func (acl *ACL) AddRole(role Role, parent Role) *ACL {
 		roleNode.Parent = parent
 		if parentNode, ok := acl.RoleTree[parent.GetRoleID()]; ok {
 			parentNode.Children = append(parentNode.Children, role)
+		} else {
+			// creates an add the parent even if it doesnt exist
+			parentNode = &RoleNode{Instance: parent, Children: []Role{role}}
+			acl.RoleTree[parent.GetRoleID()] = parentNode
 		}
 	}
 
@@ -177,26 +181,26 @@ func (acl *ACL) setRule(operation Operation, Type Type, role Role, resource Reso
 	case Add:
 		if len(privileges) > 0 {
 			for _, privilege := range privileges {
-				acl.rules = append(
+				acl.Rules = append(
 					[]*Rule{{Type: Type, Role: role, Resource: resource, Privilege: privilege}},
-					acl.rules...)
+					acl.Rules...)
 			}
 		} else {
-			acl.rules = append([]*Rule{{Type: Type, Role: role, Resource: resource, AllPrivileges: true}}, acl.rules...)
+			acl.Rules = append([]*Rule{{Type: Type, Role: role, Resource: resource, AllPrivileges: true}}, acl.Rules...)
 		}
 	case Remove:
 		if len(privileges) > 0 {
 			for _, privilege := range privileges {
-				for i, rule := range acl.rules {
+				for i, rule := range acl.Rules {
 					if rule.Type == Type && role.GetRoleID() == rule.GetRoleID() && rule.GetResourceID() == resource.GetResourceID() && privilege == rule.Privilege && rule.Assertion == nil && rule.AllPrivileges == false {
-						acl.rules = append(acl.rules[0:i], acl.rules[i+1:len(acl.rules)]...)
+						acl.Rules = append(acl.Rules[0:i], acl.Rules[i+1:len(acl.Rules)]...)
 					}
 				}
 			}
 		} else {
-			for i, rule := range acl.rules {
+			for i, rule := range acl.Rules {
 				if rule.Type == Type && role.GetRoleID() == rule.GetRoleID() && rule.GetResourceID() == resource.GetResourceID() && rule.AllPrivileges == true {
-					acl.rules = append(acl.rules[0:i], acl.rules[i+1:len(acl.rules)]...)
+					acl.Rules = append(acl.Rules[0:i], acl.Rules[i+1:len(acl.Rules)]...)
 				}
 			}
 		}
@@ -216,7 +220,7 @@ func (acl *ACL) IsAllowed(role Role, resource Resource, privileges ...string) bo
 
 func (acl *ACL) isAllowed(role Role, resource Resource, privilege string) bool {
 	// check for a direct rule
-	for _, rule := range acl.rules {
+	for _, rule := range acl.Rules {
 		if (rule.Role != nil && role != nil && role.GetRoleID() == rule.GetRoleID()) || (rule.Role == nil) {
 			if (rule.Resource != nil && resource != nil && rule.GetResourceID() == resource.GetResourceID()) || (rule.Resource == nil) {
 				if rule.AllPrivileges || rule.Privilege == privilege {
