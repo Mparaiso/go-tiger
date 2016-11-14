@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/Mparaiso/go-orm/tools"
 	"github.com/Mparaiso/go-tiger/db/platform"
 	"github.com/Mparaiso/go-tiger/logger"
 )
@@ -96,7 +95,7 @@ func (connection *DefaultConnection) Select(records interface{}, query string, p
 	if err != nil {
 		return err
 	}
-	err = tools.MapRowsToSliceOfStruct(rows, records, true)
+	err = MapRowsToSliceOfStruct(rows, records, true)
 
 	return err
 }
@@ -109,7 +108,7 @@ func (connection *DefaultConnection) SelectMap(Map *[]map[string]interface{}, qu
 	if err != nil {
 		return err
 	}
-	return tools.MapRowsToSliceOfMaps(rows, Map)
+	return MapRowsToSliceOfMaps(rows, Map)
 
 }
 
@@ -121,7 +120,7 @@ func (connection *DefaultConnection) SelectSlice(slices *[][]interface{}, query 
 	if err != nil {
 		return err
 	}
-	return tools.MapRowsToSliceOfSlices(rows, slices)
+	return MapRowsToSliceOfSlices(rows, slices)
 
 }
 
