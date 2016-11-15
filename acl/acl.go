@@ -79,6 +79,7 @@ type ACL struct {
 // NewACL returns a new access control list
 func NewACL() *ACL {
 	acl := &ACL{RoleTree: map[string]*RoleNode{}, ResourceTree: map[string]*ResourceNode{}, Rules: []*Rule{}}
+	// By default, deny everything to everybody
 	acl.Deny(nil, nil)
 	return acl
 }
