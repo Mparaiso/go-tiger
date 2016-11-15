@@ -15,6 +15,7 @@
 package acl_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/Mparaiso/go-tiger/acl"
@@ -26,32 +27,24 @@ const (
 	denied  = "denied"
 )
 
-// func ExampleACL() {
-// 	roles := []acl.Role{
-// 		acl.NewRole("guest"),
-// 		acl.NewRole("member"),
-// 		acl.NewRole("admin"),
-// 	}
-// 	userRole := acl.NewRole("someUser")
-// 	resources := []acl.Resource{
-// 		acl.NewResource("someResource"),
-// 	}
-// 	acl := acl.NewACL()
-// 	acl.AddRoles(roles)
+func ExampleACL() {
+	roles := map[string]acl.Role{
+		"guest": acl.NewRole("guest"),
+	}
+	resources := map[string]acl.Resource{
+		"article": acl.NewResource("article"),
+	}
+	acl := acl.NewACL()
 
-// 	acl.AddRole(userRole, roles...)
+	acl.AddResource(resources["article"])
+	acl.Allow(roles["guest"], resources["article"])
+	fmt.Println(ternary(acl.IsAllowed(roles["guest"], resources["article"]), allowed, denied))
+	fmt.Println(ternary(acl.IsAllowed(roles["anonymous"], resources["article"]), allowed, denied))
+	// Output:
+	// allowed
+	// denied
 
-// 	acl.AddResource(resources[0])
-
-// 	acl.Deny(roles[0], resources[0])
-// 	acl.Allow(roles[1], resource[0])
-
-// 	fmt.Println(ternary(acl.isAllowed(userRole, resources[0]), allowed, denied))
-
-// 	// Output:
-// 	// allowed
-
-// }
+}
 
 func TestACL(t *testing.T) {
 	roles := map[string]acl.Role{

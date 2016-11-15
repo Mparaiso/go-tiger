@@ -12,6 +12,14 @@
 //    See the License for the specific language governing permissions and
 //    limitations under the License.
 
+/*
+Package acl is an Access Console List (https://en.wikipedia.org/wiki/Access_control_list)
+allowing Role/Resource/Priviledge complex authorizations for an application.
+
+This package is a port of https://framework.zend.com/manual/1.12/en/zend.acl.html, the main
+difference being that roles do not support multiple inheritance for the time being. Also support
+for custom type assertions is a work in progress.
+*/
 package acl
 
 // Type is a rule type
@@ -36,6 +44,7 @@ const (
 
 // Rule is an ACL rule
 type Rule struct {
+	ID int64
 	Type
 	Role
 	Resource
@@ -46,6 +55,7 @@ type Rule struct {
 
 // ResourceNode is a node in a tree of nodes
 type ResourceNode struct {
+	ID       int64
 	Instance Resource
 	Children []Resource
 	Parent   Resource
@@ -53,6 +63,7 @@ type ResourceNode struct {
 
 // RoleNode is a node in a tree of nodes
 type RoleNode struct {
+	ID       int64
 	Instance Role
 	Children []Role
 	Parent   Role
@@ -67,7 +78,9 @@ type ACL struct {
 
 // NewACL returns a new access control list
 func NewACL() *ACL {
-	return &ACL{RoleTree: map[string]*RoleNode{}, ResourceTree: map[string]*ResourceNode{}, Rules: []*Rule{}}
+	acl := &ACL{RoleTree: map[string]*RoleNode{}, ResourceTree: map[string]*ResourceNode{}, Rules: []*Rule{}}
+	acl.Deny(nil, nil)
+	return acl
 }
 
 // GetRole returns the Role or nil if not exists
@@ -209,43 +222,41 @@ func (acl *ACL) setRule(operation Operation, Type Type, role Role, resource Reso
 }
 
 // IsAllowed return true if role is allowed all privileges on resource
+// When multiple priviledges are checked, ALL priviledges must be allowed.
 func (acl *ACL) IsAllowed(role Role, resource Resource, privileges ...string) bool {
-	for _, privilege := range privileges {
-		if !acl.isAllowed(role, resource, privilege) {
-			return false
+	authorization := []bool{}
+	if len(privileges) > 0 {
+		for _, privilege := range privileges {
+			if !acl.isAllowed(role, resource, privilege) {
+				return false
+			} else {
+				authorization = append(authorization, true)
+			}
 		}
+		if len(authorization) == len(privileges) {
+			return true
+		}
+		return false
 	}
-	return true
+	return acl.isAllowed(role, resource, "")
 }
 
 func (acl *ACL) isAllowed(role Role, resource Resource, privilege string) bool {
-	// check for a direct rule
 	for _, rule := range acl.Rules {
-		if (rule.Role != nil && role != nil && role.GetRoleID() == rule.GetRoleID()) || (rule.Role == nil) {
-			if (rule.Resource != nil && resource != nil && rule.GetResourceID() == resource.GetResourceID()) || (rule.Resource == nil) {
-				if rule.AllPrivileges || rule.Privilege == privilege {
+		if ((rule.Role != nil && role != nil) && /* if neither roles are nil , then either the roles are equal or role inherits from rule.Role */
+			((role.GetRoleID() == rule.GetRoleID()) ||
+				acl.InheritsRole(role, rule.Role))) ||
+			rule.Role == nil { /* or rule.Role is nil so rule applies to all roles */
+			if ((rule.Resource != nil && resource != nil) && /* if neither resources are nil and */
+				((rule.GetResourceID() == resource.GetResourceID()) || acl.InheritsResource(resource, rule.Resource))) ||
+				/* either both resources are equal OR resource inherits from rule.Resource */
+				(rule.Resource == nil) { /* or the rule applies to app resources */
+				if rule.AllPrivileges || rule.Privilege == privilege { /* if this rule applies to all priviledges OR priviledges are equal */
 					if rule.Type == Deny {
 						return false
 					}
 					return true
 				}
-			}
-
-		}
-	}
-	// check for a rule on the resource's parent
-	if resource != nil && acl.HasResource(resource) {
-		if node := acl.ResourceTree[resource.GetResourceID()]; node != nil {
-			if node.Parent != nil {
-				return acl.isAllowed(role, node.Parent, privilege)
-			}
-		}
-	}
-	// check for a rule on the role's parent
-	if role != nil && acl.HasRole(role) {
-		if node := acl.RoleTree[role.GetRoleID()]; node != nil {
-			if node.Parent != nil {
-				return acl.isAllowed(node.Parent, resource, privilege)
 			}
 		}
 	}
