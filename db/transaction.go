@@ -16,6 +16,25 @@ func (transaction *Transaction) Exec(query string, args ...interface{}) (sql.Res
 	return transaction.Tx.Exec(query, args...)
 }
 
+func (transaction *Transaction) Prepare(query string) (*Statement, error) {
+	defer transaction.log(query)
+	stmt, err := transaction.Tx.Prepare(query)
+	if err != nil {
+		return nil, err
+	}
+	return &Statement{statement: stmt, query: query, logger: transaction.Logger}, nil
+}
+
+func (transaction *Transaction) Query(query string, arguments ...interface{}) *Rows {
+	defer transaction.log(query, arguments)
+	return NewRows(transaction.Tx.Query(query, arguments...))
+}
+
+func (transaction *Transaction) QueryRow(query string, arguments ...interface{}) *Row {
+	defer transaction.log(query, arguments)
+	return NewRow(transaction.Tx.Query(query, arguments...))
+}
+
 func (transaction *Transaction) Rollback() (err error) {
 	defer transaction.error("Rollback Transaction.", err)
 	err = transaction.Tx.Rollback()
