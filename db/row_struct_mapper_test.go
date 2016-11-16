@@ -20,6 +20,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Mparaiso/go-tiger/db"
+	"github.com/Mparaiso/go-tiger/logger"
+	"github.com/Mparaiso/go-tiger/test"
 	_ "github.com/amattn/go-sqlite3"
 	ex "github.com/mparaiso/expect-go"
 	mapper "github.com/mparaiso/go-tiger/db"
@@ -56,11 +59,22 @@ func TestMapRowsToSliceOfStruct(t *testing.T) {
 	})
 }
 
+func TestSQLTagBuilder(t *testing.T) {
+	tag := "column:id"
+	sqlTag := db.SQLStructTagBuilder{logger.NewTestLogger(t)}.BuildFromString(tag)
+	test.Fatal(t, sqlTag.ColumnName, "id")
+	test.Fatal(t, sqlTag.PersistZeroValue, false)
+	tag = "column:email,persistzerovalue"
+	sqlTag = db.SQLStructTagBuilder{logger.NewTestLogger(t)}.BuildFromString(tag)
+	test.Fatal(t, sqlTag.ColumnName, "email")
+	test.Fatal(t, sqlTag.PersistZeroValue, true)
+}
+
 func Example() {
 	type User struct {
-		ID           int64
-		Name         string
-		DateCreation *time.Time
+		ID           int64      `sql:"column:id"`
+		Name         string     `sql:"column:name"`
+		DateCreation *time.Time `sql:"column:date_creation"`
 	}
 	db, _ := sql.Open("sqlite3", ":memory:")
 	defer db.Close()
@@ -75,13 +89,15 @@ func Example() {
 		db.Exec(statement)
 	}
 
-	rows, _ := db.Query("SELECT id as ID,name as Name,date_creation as DateCreation FROM users;")
+	rows, _ := db.Query("SELECT * FROM users;")
 	users := []*User{}
 	err := mapper.MapRowsToSliceOfStruct(rows, &users, false)
 	fmt.Println(err)
 	fmt.Println(len(users))
+	fmt.Println(users[0].Name)
 	// Output:
 	// <nil>
 	// 2
+	// john doe
 
 }

@@ -19,6 +19,11 @@ import (
 	"fmt"
 	"reflect"
 
+	"regexp"
+
+	"strings"
+
+	"github.com/Mparaiso/go-tiger/db/expression"
 	"github.com/Mparaiso/go-tiger/db/platform"
 	"github.com/Mparaiso/go-tiger/logger"
 )
@@ -26,6 +31,8 @@ import (
 var (
 	// ErrNotAPointer is yield when a pointer was expected
 	ErrNotAPointer = fmt.Errorf("Error, value is not a pointer.")
+	// ErrNotAStruct is yield when a struct was expected
+	ErrNotAStruct = fmt.Errorf("Error this value is not a struct")
 )
 
 // Connection is the db connection
@@ -119,6 +126,122 @@ func (connection *DefaultConnection) Ping() error {
 // DB returns Go standard *sql.DB type
 func (connection *DefaultConnection) DB() *sql.DB {
 	return connection.Db
+}
+
+// Delete all rows of a table matching the given identifier, where keys are column names.
+func (connection *DefaultConnection) Delete(table string, criteria map[string]interface{}) (sql.Result, error) {
+	qb := connection.CreateQueryBuilder().Delete(table)
+	expression, data := mapToExpression(criteria)
+	return qb.Where(expression).Exec(data...)
+}
+
+func mapToExpression(criteria map[string]interface{}) (Expression *expression.Expression, data []interface{}) {
+	parts := []interface{}{}
+	for key, value := range criteria {
+		switch {
+		case regexp.MustCompile(`^\w+$`).MatchString(strings.TrimSpace(key)):
+			parts = append(parts, expression.Eq(key, "?"))
+		default:
+			parts = append(parts, key+" ? ")
+		}
+		data = append(data, value)
+	}
+	Expression = expression.And(parts...)
+	return
+}
+
+// Update executes an SQL UPDATE statement on a table.
+func (connection *DefaultConnection) Update(table string, criteria map[string]interface{}, data interface{}) (sql.Result, error) {
+	switch dataType := data.(type) {
+	case map[string]interface{}:
+		data := []interface{}{}
+		qb := connection.CreateQueryBuilder().
+			Update(table)
+		for key, value := range dataType {
+			qb.Set(key, "?")
+			data = append(data, value)
+		}
+		for key, value := range criteria {
+			qb.AndWhere(expression.Eq(key, "?"))
+			data = append(data, value)
+		}
+
+		return qb.Exec(data...)
+	default:
+		Value := reflect.Indirect(reflect.ValueOf(data))
+		Type := Value.Type()
+		if reflect.Struct != Value.Kind() {
+			return nil, ErrNotAStruct
+		}
+		values := map[string]interface{}{}
+		for i := 0; i < Type.NumField(); i++ {
+			Field := Value.Field(i)
+			Tag, ok := Value.Type().Field(i).Tag.Lookup("sql")
+			if ok {
+				if Tag == "-" {
+					continue
+				}
+				sqlTag := SQLStructTagBuilder{}.BuildFromString(Tag)
+				if sqlTag.ColumnName != "" {
+					values[sqlTag.ColumnName] = Field.Interface()
+					continue
+				}
+			}
+			values[Type.Field(i).Name] = Field.Interface()
+		}
+		return connection.Update(table, criteria, values)
+	}
+}
+
+// Insert persists a new record into the database
+// it supports both map[string]interface{} and structs
+// as data. STruct field names ARE NOT automatically lowecased !
+// use `slq:"column_name"` struct tag to explicitely denominate the db column
+// omit a struct field with `sql:"-"` struct tag.
+func (connection *DefaultConnection) Insert(tableName string, data interface{}) (sql.Result, error) {
+	switch dataType := data.(type) {
+	case map[string]interface{}:
+		data := []interface{}{}
+		qb := connection.CreateQueryBuilder().
+			Insert(tableName)
+		for key, value := range dataType {
+			qb.SetValue(key, "?")
+			data = append(data, value)
+		}
+		return qb.Exec(data...)
+	default:
+		Value := reflect.Indirect(reflect.ValueOf(data))
+		Type := Value.Type()
+		if Type.Kind() != reflect.Struct {
+			return nil, ErrNotAStruct
+		}
+		data := map[string]interface{}{}
+		for i := 0; i < Type.NumField(); i++ {
+			fieldValue, fieldType := Value.Field(i), Value.Field(i).Type()
+			stringTag, ok := Type.Field(i).Tag.Lookup("sql")
+			if ok {
+				tags := SQLStructTagBuilder{}.BuildFromString(stringTag)
+				// if no "persistZeroValue" tag and value is zero then don't persist
+				if !tags.PersistZeroValue && fieldValue.Interface() == reflect.Zero(fieldType).Interface() {
+					continue
+				}
+				if tags.ColumnName != "" {
+					data[tags.ColumnName] = fieldValue.Interface()
+					continue
+				} else if stringTag == "-" {
+					// omit this field
+					continue
+				}
+			}
+			// if value is zero and no tag, don't persist field
+			if fieldType.Comparable() && fieldValue.Interface() == reflect.Zero(fieldType).Interface() {
+				continue
+			}
+			// use the field name as the db field name
+			data[Type.Field(i).Name] = fieldValue.Interface()
+		}
+		return connection.Insert(tableName, data)
+	}
 }
 
 // Prepare prepares a statement
@@ -239,6 +362,19 @@ type Row struct {
 
 func NewRow(rows *sql.Rows, err error) *Row {
 	return &Row{rows: rows, err: err}
+}
+
+// GetSingleResult returns the first column of the queried row
+// pointer must be a pointer to the type of result
+func (row *Row) GetSingleResult(pointer interface{}) error {
+	defer row.rows.Close()
+	if reflect.TypeOf(pointer).Kind() != reflect.Ptr {
+		return ErrNotAPointer
+	}
+	if !row.rows.Next() {
+		return sql.ErrNoRows
+	}
+	return row.rows.Scan(pointer)
 }
 
 // GetResult assigns the db row to pointerToStruct

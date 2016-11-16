@@ -14,8 +14,8 @@
 
 /*
 Package db helps Go developers map db rows to structs and slice of structs.
-With db, developers no longer need to write a lot of boilerplate to 
-transform db rows into structs as the result of a db query. 
-*/
-
+With db, developers no longer need to write a lot of boilerplate to
+transform db rows into structs as the result of a db query. The Package also provides
+a database abstraction layer heavily inspired by Doctrine DBAL
+http://docs.doctrine-project.org/projects/doctrine-dbal/en/latest/ */
 package db

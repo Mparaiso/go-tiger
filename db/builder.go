@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"strings"
 
+	"database/sql"
+
 	"github.com/Mparaiso/go-tiger/container"
 	"github.com/Mparaiso/go-tiger/db/expression"
 )
@@ -306,7 +308,7 @@ func (b *QueryBuilder) Insert(table string) *QueryBuilder {
 // 	return b.add(values, []interface{}{Values(FieldsAndValues)}, false)
 // }
 
-// SetValue sets the values of an insert or update operation
+// SetValue sets a value for a column in an insert query
 func (b *QueryBuilder) SetValue(field string, value interface{}) *QueryBuilder {
 	if valuePart, ok := b.sqlParts[values]; ok && len(valuePart) > 0 {
 		valuePart[0].(Values).Set(field, value)
@@ -475,7 +477,9 @@ func (b *QueryBuilder) String() string {
 func (b *QueryBuilder) Prepare() *Statement {
 	return b.GetConnection().Prepare(b.String())
 }
-
+func (b *QueryBuilder) Exec(arguments ...interface{}) (sql.Result, error) {
+	return b.GetConnection().Exec(b.String(), arguments...)
+}
 func (b *QueryBuilder) Query(arguments ...interface{}) *Rows {
 	return b.GetConnection().Query(b.String(), arguments...)
 }

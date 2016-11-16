@@ -17,6 +17,8 @@ package db_test
 import (
 	"database/sql"
 	"flag"
+	"fmt"
+	"log"
 	"os"
 	"testing"
 	"time"
@@ -31,12 +33,90 @@ import (
 )
 
 type AppUser struct {
-	Name  string `sql:"name"`
-	Email string `sql:"email"`
+	ID    string `sql:"column:id"`
+	Name  string `sql:"column:name"`
+	Email string `sql:"column:email"`
 	*UserInfos
 }
 
 type UserInfos struct {
+}
+
+func ExampleConnection() {
+	t := test.ExampleTester{log.New(os.Stderr, "log-tester", log.LstdFlags)}
+	// Define a type that represents a table
+	type TestUser struct {
+		ID      int64     `sql:"column:id"`
+		Name    string    `sql:"column:name"`  // db field name will match the content of the tag if declared
+		Email   string    `sql:"column:email"` // fieldnames are not automatically lower-cased to match db field names
+		Created time.Time `sql:"column:created"`
+	}
+	var err error
+	// initialize the driver
+	DB, err := sql.Open("sqlite3", ":memory:")
+	test.Fatal(t, err, nil)
+	// create a connection
+	connection := db.NewConnection("sqlite3", DB)
+	// create a table
+	_, err = connection.Exec(`
+		CREATE TABLE users(
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name VARCHAR(255) UNIQUE NOT NULL,
+			email VARCHAR(255) UNIQUE NOT NULL,
+			created TIMESTAMP NOT NULL DEFAULT(datetime('now'))
+		);`)
+	test.Fatal(t, err, nil)
+	user := &TestUser{Name: "John Doe", Email: "john.doe@example.com"}
+	// Insert a new user into the database
+	result, err := connection.Insert("users", user)
+	test.Fatal(t, err, nil)
+
+	id, err := result.LastInsertId()
+	test.Fatal(t, err, nil)
+
+	fmt.Println("last inserted id", id)
+	// insert another user thanks to the query builder
+	result, err = connection.CreateQueryBuilder().
+		Insert("users").
+		SetValue("name", "?").
+		SetValue("email", "?").
+		Exec("Jane Doe", "jane.doe@example.com")
+	test.Fatal(t, err, nil)
+	// fetch the first inserted user
+	candidate := &TestUser{}
+	err = connection.QueryRow("SELECT u.* FROM users u WHERE u.id = ?", id).
+		GetResult(candidate)
+	test.Fatal(t, err, nil)
+	fmt.Println("candidate.Name:", candidate.Name)
+	// update the record
+	candidate.Name = "John Robert Doe"
+	result, err = connection.Update("users", map[string]interface{}{"id": candidate.ID}, candidate)
+	test.Fatal(t, err, nil)
+
+	affectedRows, err := result.RowsAffected()
+	test.Fatal(t, err, nil)
+	fmt.Println("rows affected by update:", affectedRows)
+	// delete the record
+	result, err = connection.Delete("users", map[string]interface{}{"id": candidate.ID})
+	test.Fatal(t, err, nil)
+	affectedRows, err = result.RowsAffected()
+	test.Fatal(t, err, nil)
+	fmt.Println("rows affected by delete:", affectedRows)
+	// let' make sure there is only one user in the database
+	var count int
+	err = connection.CreateQueryBuilder().
+		Select("COUNT(u.id)").From("users", "u").
+		QueryRow().
+		GetSingleResult(&count)
+	test.Fatal(t, err, nil)
+	fmt.Println("user count:", count)
+	// Output:
+	// last inserted id 1
+	// candidate.Name: John Doe
+	// rows affected by update: 1
+	// rows affected by delete: 1
+	// user count: 1
+
 }
 
 func TestConnectionGet(t *testing.T) {

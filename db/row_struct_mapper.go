@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+
+	"github.com/Mparaiso/go-tiger/logger"
 )
 
 // RowsScanner can scan a db row and iterate over db rows
@@ -233,15 +235,13 @@ func CreateTagMapperFunc(Struct interface{}, tagname ...string) (func(string) st
 	for i := 0; i < structValue.NumField(); i++ {
 		name := structValue.Type().Field(i).Name
 		// There can be multiple tags in the struct tag, always only check the first tag
-		tags := strings.Split(structValue.Type().Field(i).Tag.Get(tagname[0]), ",")
-		var tag string
-		if len(tags) > 0 {
-			tag = tags[0]
+		stringTags := structValue.Type().Field(i).Tag.Get(tagname[0])
+		tags := SQLStructTagBuilder{}.BuildFromString(stringTags)
+		if tags.ColumnName != "" {
+			m[tags.ColumnName] = name
+		} else {
+			m[name] = name
 		}
-		if tag == "" {
-			tag = name
-		}
-		m[tag] = name
 	}
 	return func(s string) string {
 		if r, ok := m[s]; ok {
@@ -249,4 +249,42 @@ func CreateTagMapperFunc(Struct interface{}, tagname ...string) (func(string) st
 		}
 		return s
 	}, nil
+}
+
+// SQLStructTag is the type representation of sql struct tag
+type SQLStructTag struct {
+	ColumnName       string
+	PersistZeroValue bool
+}
+
+// SQLStructTagBuilder is a SQLStructTag build
+type SQLStructTagBuilder struct {
+	logger.Logger
+}
+
+func (builder SQLStructTagBuilder) log(args ...interface{}) {
+	if builder.Logger != nil {
+		builder.Logger.Log(logger.Debug, append([]interface{}{"SQLStructTagBuilder"}, args...)...)
+	}
+}
+
+// BuildFromString builds a SQLStructTag from a string
+func (builder SQLStructTagBuilder) BuildFromString(data string) SQLStructTag {
+	datas := strings.Split(data, ",")
+	builder.log("datas:", fmt.Sprint(data))
+	tag := SQLStructTag{}
+	for _, data := range datas {
+		data = strings.TrimSpace(data)
+		builder.log("\tdata:", fmt.Sprint(data))
+
+		if strings.HasPrefix(data, "column:") {
+			tag.ColumnName = strings.TrimSpace(strings.TrimPrefix(data, "column:"))
+			builder.log("\t\tcolumn:", fmt.Sprint(tag.ColumnName))
+
+		}
+		if strings.TrimSpace(strings.ToLower(data)) == "persistzerovalue" {
+			tag.PersistZeroValue = true
+		}
+	}
+	return tag
 }
