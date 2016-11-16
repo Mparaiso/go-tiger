@@ -19,10 +19,18 @@ func ExampleOrderedMap() {
 	Map.Set("e", 4)
 	Map.Set("a", 10)
 	Map.Delete("b")
+	// iterate through the map with an index
 	for i := 0; i < Map.Length(); i++ {
 		fmt.Printf("%v %v\n", Map.KeyAt(i), Map.ValueAt(i))
 	}
+	// iterates through with an array of keys
+	for _, key := range Map.Keys() {
+		fmt.Printf("%v %v\n", key, Map.Get(key))
+	}
 	// Output:
+	// a 10
+	// d 3
+	// e 4
 	// a 10
 	// d 3
 	// e 4

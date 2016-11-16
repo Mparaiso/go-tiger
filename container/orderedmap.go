@@ -20,16 +20,18 @@ type element struct {
 }
 
 // OrderedMap is a map that
-// is ordered unlike Go's map[T]T
+// which elements are ordered
 type OrderedMap struct {
 	elements []element
 	hashMap  map[interface{}]int
 }
 
+// NewOrderedMap creates a new OrderedMap
 func NewOrderedMap() *OrderedMap {
 	return &OrderedMap{[]element{}, map[interface{}]int{}}
 }
 
+// Set sets a keyed value
 func (Map *OrderedMap) Set(key, value interface{}) *OrderedMap {
 	if index, ok := Map.hashMap[key]; ok {
 		Map.elements[index] = element{key, value}
@@ -40,6 +42,8 @@ func (Map *OrderedMap) Set(key, value interface{}) *OrderedMap {
 	return Map
 }
 
+// Delete deletes a value by key, return false
+// if the value was not found
 func (Map *OrderedMap) Delete(key interface{}) bool {
 	if index, ok := Map.hashMap[key]; ok {
 		Map.elements = append(Map.elements[0:index], Map.elements[index+1:len(Map.elements)]...)
@@ -49,6 +53,7 @@ func (Map *OrderedMap) Delete(key interface{}) bool {
 	return false
 }
 
+// Get returns a value by key
 func (Map OrderedMap) Get(key interface{}) interface{} {
 	for _, element := range Map.elements {
 		if element.key == key {
@@ -58,6 +63,7 @@ func (Map OrderedMap) Get(key interface{}) interface{} {
 	return nil
 }
 
+// Values returns all values in the map
 func (Map OrderedMap) Values() []interface{} {
 	values := []interface{}{}
 	for _, element := range Map.elements {
@@ -66,6 +72,7 @@ func (Map OrderedMap) Values() []interface{} {
 	return values
 }
 
+// Keys returns all keys in a map
 func (Map OrderedMap) Keys() []interface{} {
 	keys := []interface{}{}
 	for _, element := range Map.elements {
@@ -74,6 +81,7 @@ func (Map OrderedMap) Keys() []interface{} {
 	return keys
 }
 
+// Has returns true if a key was found in the map
 func (Map OrderedMap) Has(key interface{}) bool {
 	for _, element := range Map.elements {
 		if element.key == key {
@@ -83,16 +91,20 @@ func (Map OrderedMap) Has(key interface{}) bool {
 	return false
 }
 
+// Length returns the length of a map
 func (Map OrderedMap) Length() int {
 	return len(Map.elements)
 }
 
+// KeyAt returns a key at index
 func (Map OrderedMap) KeyAt(index int) (key interface{}) {
 	if index >= Map.Length() || index < 0 {
 		return nil
 	}
 	return Map.elements[index].key
 }
+
+// ValueAt returns a value at index, or nil
 func (Map OrderedMap) ValueAt(index int) (key interface{}) {
 	if index >= Map.Length() || index < 0 {
 		return nil
