@@ -16,8 +16,8 @@ package test
 
 import (
 	"fmt"
+	"log"
 	"runtime"
-	"testing"
 
 	"github.com/Mparaiso/go-tiger/logger"
 	"github.com/sergi/go-diff/diffmatchpatch"
@@ -28,8 +28,34 @@ var template = `%s
 want : '%+v'
 got  : '%+v'`
 
+type ExampleTester struct {
+	*log.Logger
+}
+
+func (tester ExampleTester) Fatalf(format string, arguments ...interface{}) {
+	tester.Logger.Fatalf(format, arguments...)
+}
+func (tester ExampleTester) Errorf(format string, arguments ...interface{}) {
+	tester.Logger.Fatalf(format, arguments...)
+}
+func (tester ExampleTester) Log(arguments ...interface{}) {
+	tester.Logger.Println(arguments...)
+}
+func (tester ExampleTester) Logf(format string, arguments ...interface{}) {
+	tester.Logger.Printf(format, arguments...)
+}
+
+// Tester is an partial abstraction
+// of *testing.T
+type Tester interface {
+	Fatalf(format string, arguments ...interface{})
+	Errorf(format string, arguments ...interface{})
+	Log(arguments ...interface{})
+	Logf(format string, arguments ...interface{})
+}
+
 // Fatal is a helper used to reduce the boilerplate during tests
-func Fatal(t *testing.T, got, want interface{}, comments ...string) {
+func Fatal(t Tester, got, want interface{}, comments ...string) {
 	var comment string
 	if want != got {
 		if len(comments) > 0 {
@@ -44,7 +70,7 @@ func Fatal(t *testing.T, got, want interface{}, comments ...string) {
 }
 
 // FatalWithDiff is like test.Fatal with a textual diff between the 2 results
-func FatalWithDiff(t *testing.T, got, want interface{}, comments ...string) {
+func FatalWithDiff(t Tester, got, want interface{}, comments ...string) {
 	var comment string
 	if want != got {
 		if len(comments) > 0 {
@@ -61,7 +87,7 @@ func FatalWithDiff(t *testing.T, got, want interface{}, comments ...string) {
 }
 
 // ErrorWithDiff is like test.Error with a textual diff between the 2 results
-func ErrorWithDiff(t *testing.T, got, want interface{}, comments ...string) {
+func ErrorWithDiff(t Tester, got, want interface{}, comments ...string) {
 	var comment string
 	if want != got {
 		if len(comments) > 0 {
@@ -78,7 +104,7 @@ func ErrorWithDiff(t *testing.T, got, want interface{}, comments ...string) {
 }
 
 // Error is a helper used to reduce the boilerplate during tests
-func Error(t *testing.T, got, want interface{}, comments ...string) {
+func Error(t Tester, got, want interface{}, comments ...string) {
 	var comment string
 	if want != got {
 		if len(comments) > 0 {
@@ -96,10 +122,10 @@ func Error(t *testing.T, got, want interface{}, comments ...string) {
 var _ logger.Logger = &TestLogger{}
 
 type TestLogger struct {
-	t *testing.T
+	t Tester
 }
 
-func NewTestLogger(t *testing.T) *TestLogger {
+func NewTestLogger(t Tester) *TestLogger {
 	return &TestLogger{t}
 }
 
