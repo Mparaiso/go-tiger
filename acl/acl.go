@@ -189,24 +189,26 @@ func (acl *ACL) HasResource(resource Resource) bool {
 	}
 	return false
 }
-func (acl *ACL) setRule(operation Operation, Type Type, role Role, resource Resource, privileges ...string) *ACL {
-
+func (acl *ACL) setRule(operation Operation, Type Type, role Role, resource Resource, privileges ...string) *Rule {
+	var returnedRule *Rule
 	switch operation {
 	case Add:
 		if len(privileges) > 0 {
 			for _, privilege := range privileges {
+				returnedRule = &Rule{Type: Type, Role: role, Resource: resource, Privilege: privilege}
 				acl.Rules = append(
-					[]*Rule{{Type: Type, Role: role, Resource: resource, Privilege: privilege}},
-					acl.Rules...)
+					[]*Rule{returnedRule}, acl.Rules...)
 			}
 		} else {
-			acl.Rules = append([]*Rule{{Type: Type, Role: role, Resource: resource, AllPrivileges: true}}, acl.Rules...)
+			returnedRule = &Rule{Type: Type, Role: role, Resource: resource, AllPrivileges: true}
+			acl.Rules = append([]*Rule{returnedRule}, acl.Rules...)
 		}
 	case Remove:
 		if len(privileges) > 0 {
 			for _, privilege := range privileges {
 				for i, rule := range acl.Rules {
 					if rule.Type == Type && role.GetRoleID() == rule.GetRoleID() && rule.GetResourceID() == resource.GetResourceID() && privilege == rule.Privilege && rule.Assertion == nil && rule.AllPrivileges == false {
+						returnedRule = acl.Rules[i]
 						acl.Rules = append(acl.Rules[0:i], acl.Rules[i+1:len(acl.Rules)]...)
 					}
 				}
@@ -214,12 +216,13 @@ func (acl *ACL) setRule(operation Operation, Type Type, role Role, resource Reso
 		} else {
 			for i, rule := range acl.Rules {
 				if rule.Type == Type && role.GetRoleID() == rule.GetRoleID() && rule.GetResourceID() == resource.GetResourceID() && rule.AllPrivileges == true {
+					returnedRule = acl.Rules[i]
 					acl.Rules = append(acl.Rules[0:i], acl.Rules[i+1:len(acl.Rules)]...)
 				}
 			}
 		}
 	}
-	return acl
+	return returnedRule
 }
 
 // IsAllowed return true if role is allowed all privileges on resource
@@ -265,22 +268,22 @@ func (acl *ACL) isAllowed(role Role, resource Resource, privilege string) bool {
 }
 
 // Allow adds an allow rule
-func (acl *ACL) Allow(role Role, resource Resource, privilege ...string) *ACL {
+func (acl *ACL) Allow(role Role, resource Resource, privilege ...string) *Rule {
 	return acl.setRule(Add, Allow, role, resource, privilege...)
 }
 
 // Deny adds a deny rule
-func (acl *ACL) Deny(role Role, resource Resource, privilege ...string) *ACL {
+func (acl *ACL) Deny(role Role, resource Resource, privilege ...string) *Rule {
 	return acl.setRule(Add, Deny, role, resource, privilege...)
 }
 
 // RemoveAllow removes a allow rule
-func (acl *ACL) RemoveAllow(role Role, resource Resource, privilege ...string) *ACL {
+func (acl *ACL) RemoveAllow(role Role, resource Resource, privilege ...string) *Rule {
 	return acl.setRule(Remove, Allow, role, resource, privilege...)
 }
 
 // RemoveDeny deny removes a deny rule
-func (acl *ACL) RemoveDeny(role Role, resource Resource, privilege ...string) *ACL {
+func (acl *ACL) RemoveDeny(role Role, resource Resource, privilege ...string) *Rule {
 	return acl.setRule(Remove, Deny, role, resource, privilege...)
 }
 
