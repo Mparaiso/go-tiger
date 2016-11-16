@@ -20,6 +20,7 @@ func (platform *TestDatabasePlatform) GetParent() platform.DatabasePlatform { re
 
 type TestConnection struct {
 	platform.DatabasePlatform
+	db.Connection
 }
 
 func (c *TestConnection) GetDatabasePlatform() platform.DatabasePlatform {
@@ -27,7 +28,7 @@ func (c *TestConnection) GetDatabasePlatform() platform.DatabasePlatform {
 }
 
 func NewTestConnection(t *testing.T) db.Connection {
-	return &TestConnection{&TestDatabasePlatform{}}
+	return &TestConnection{DatabasePlatform: &TestDatabasePlatform{}}
 }
 
 type Connection interface{}
@@ -336,13 +337,12 @@ func TestUpdateWhere(t *testing.T) {
 	test.Fatal(t, qb.String(), "UPDATE users u SET u.foo = ? WHERE u.foo = ?")
 }
 
-//     func TestEmptyUpdate(t *testing.T)
-//    {
-//        qb := db.NewBuilder(connection)
-//        qb2 = qb.update()
-//        test.Fatal(t,QueryBuilder::UPDATE, qb.GetType())
-//        test.Fatal(t,qb2, qb)
-//    }
+func TestEmptyUpdate(t *testing.T) {
+	connection := NewTestConnection(t)
+	qb := db.NewQueryBuilder(connection).Update("")
+	test.Fatal(t, qb.GetType(), db.Update)
+}
+
 func TestDelete(t *testing.T) {
 
 	connection := NewTestConnection(t)
@@ -372,12 +372,8 @@ func TestInsertValues(t *testing.T) {
 
 	qb := db.NewQueryBuilder(connection)
 	qb.Insert("users").
-		Values(
-			map[string]interface{}{
-				"foo": "?",
-				"bar": "?",
-			},
-		)
+		SetValue("foo", "?").
+		SetValue("bar", "?")
 	test.Fatal(t, db.Insert, qb.GetType())
 	test.Fatal(t, "INSERT INTO users (foo, bar) VALUES(?, ?)", qb.String())
 }
@@ -386,18 +382,8 @@ func TestInsertReplaceValues(t *testing.T) {
 
 	qb := db.NewQueryBuilder(connection)
 	qb.Insert("users").
-		Values(
-			map[string]interface{}{
-				"foo": "?",
-				"bar": "?",
-			},
-		).
-		Values(
-			map[string]interface{}{
-				"bar": "?",
-				"foo": "?",
-			},
-		)
+		SetValue("bar", "?").
+		SetValue("foo", "?")
 	test.Fatal(t, db.Insert, qb.GetType())
 	test.Fatal(t, "INSERT INTO users (bar, foo) VALUES(?, ?)", qb.String())
 }
@@ -417,11 +403,7 @@ func TestInsertValuesSetValue(t *testing.T) {
 
 	qb := db.NewQueryBuilder(connection)
 	qb.Insert("users").
-		Values(
-			map[string]interface{}{
-				"foo": "?",
-			},
-		).
+		SetValue("foo", "?").
 		SetValue("bar", "?")
 	test.Fatal(t, db.Insert, qb.GetType())
 	test.Fatal(t, "INSERT INTO users (foo, bar) VALUES(?, ?)", qb.String())
@@ -434,83 +416,84 @@ func TestGetConnection(t *testing.T) {
 	test.Fatal(t, connection, qb.GetConnection())
 }
 
+func TestGetState(t *testing.T) {
+	connection := NewTestConnection(t)
+	qb := db.NewQueryBuilder(connection)
+	test.Fatal(t, qb.GetState(), db.Clean)
+	qb.Select("u.*").From("users", "u")
+	test.Fatal(t, qb.GetState(), db.Dirty)
+	qb.String()
+	test.Fatal(t, qb.GetState(), db.Clean)
+}
+
+func TestSetMaxResults(t *testing.T) {
+	connection := NewTestConnection(t)
+	qb := db.NewQueryBuilder(connection)
+	qb.SetMaxResults(10)
+	test.Fatal(t, qb.GetState(), db.Dirty)
+	test.Fatal(t, qb.GetMaxResults(), 10)
+}
+func TestSetFirstResult(t *testing.T) {
+	connection := NewTestConnection(t)
+	qb := db.NewQueryBuilder(connection)
+	qb.SetFirstResult(10)
+	test.Fatal(t, qb.GetState(), db.Dirty)
+	test.Fatal(t, qb.GetFirstResult(), 10)
+}
+
 /*
- func TestGetState (t *testing.T) {
-    {
-        qb   = db.NewBuilder(connection)
-        test.Fatal(t,qb.String(),QueryBuilder::STATE_CLEAN, qb.getState())
-        qb.Select("u.*").From("users", "u")
-        test.Fatal(t,qb.String(),QueryBuilder::STATE_DIRTY, qb.getState())
-        sql1 = qb.getSQL()
-        test.Fatal(t,qb.String(),QueryBuilder::STATE_CLEAN, qb.getState())
-        test.Fatal(t,qb.String(),sql1, qb.getSQL())
-    }
-     func TestSetMaxResults (t *testing.T) {
-    {
-        qb   = db.NewBuilder(connection)
-        qb.setMaxResults(10)
-        test.Fatal(t,qb.String(),QueryBuilder::STATE_DIRTY, qb.getState())
-        test.Fatal(t,qb.String(),10, qb.getMaxResults())
-    }
-     func TestSetFirstResult (t *testing.T) {
-    {
-        qb   = db.NewBuilder(connection)
-        qb.setFirstResult(10)
-        test.Fatal(t,qb.String(),QueryBuilder::STATE_DIRTY, qb.getState())
-        test.Fatal(t,qb.String(),10, qb.getFirstResult())
-    }
-     func TestResetQueryPart (t *testing.T) {
-    {
-        qb   = db.NewBuilder(connection)
-        qb.Select("u.*").From("users", "u").where("u.name = ?")
-        test.Fatal(t,qb.String(),"SELECT u.* FROM users u WHERE u.name = ?")
-        qb.resetQueryPart("where")
-        test.Fatal(t,qb.String(),"SELECT u.* FROM users u")
-    }
-     func TestResetQueryParts (t *testing.T) {
-    {
-        qb   = db.NewBuilder(connection)
-        qb.Select("u.*").From("users", "u").where("u.name = ?").orderBy("u.name")
-        test.Fatal(t,qb.String(),"SELECT u.* FROM users u WHERE u.name = ? ORDER BY u.name ASC")
-        qb.resetQueryParts(array("where", "orderBy"))
-        test.Fatal(t,qb.String(),"SELECT u.* FROM users u")
-    }
-     func TestCreateNamedParameter (t *testing.T) {
-    {
-        qb   = db.NewBuilder(connection)
-        qb.Select("u.*").From("users", "u").where(
-            qb.expr().eq("u.name", qb.createNamedParameter(10, \PDO::PARAM_INT))
-        )
-        test.Fatal(t,qb.String(),"SELECT u.* FROM users u WHERE u.name = :dcValue1")
-        test.Fatal(t,qb.String(),10, qb.getParameter("dcValue1"))
-        test.Fatal(t,qb.String(),\PDO::PARAM_INT, qb.getParameterType("dcValue1"))
-    }
-     func TestCreateNamedParameterCustomPlaceholder (t *testing.T) {
-    {
-        qb   = db.NewBuilder(connection)
-        qb.Select("u.*").From("users", "u").where(
-            qb.expr().eq("u.name", qb.createNamedParameter(10, \PDO::PARAM_INT, ":test"))
-        )
-        test.Fatal(t,qb.String(),"SELECT u.* FROM users u WHERE u.name = :test")
-        test.Fatal(t,qb.String(),10, qb.getParameter("test"))
-        test.Fatal(t,qb.String(),\PDO::PARAM_INT, qb.getParameterType("test"))
-    }
-     func TestCreatePositionalParameter (t *testing.T) {
-    {
-        qb   = db.NewBuilder(connection)
-        qb.Select("u.*").From("users", "u").where(
-            qb.expr().eq("u.name", qb.createPositionalParameter(10, \PDO::PARAM_INT))
-        )
-        test.Fatal(t,qb.String(),"SELECT u.* FROM users u WHERE u.name = ?")
-        test.Fatal(t,qb.String(),10, qb.getParameter(1))
-        test.Fatal(t,qb.String(),\PDO::PARAM_INT, qb.getParameterType(1))
-    }
-    /**
-     * @group DBAL-172
+ func TestResetQueryPart (t *testing.T) {
+{
+    qb   = db.NewQueryBuilder(connection)
+    qb.Select("u.*").From("users", "u").where("u.name = ?")
+    test.Fatal(t,qb.String(),"SELECT u.* FROM users u WHERE u.name = ?")
+    qb.resetQueryPart("where")
+    test.Fatal(t,qb.String(),"SELECT u.* FROM users u")
+}
+ func TestResetQueryParts (t *testing.T) {
+{
+    qb   = db.NewQueryBuilder(connection)
+    qb.Select("u.*").From("users", "u").where("u.name = ?").orderBy("u.name")
+    test.Fatal(t,qb.String(),"SELECT u.* FROM users u WHERE u.name = ? ORDER BY u.name ASC")
+    qb.resetQueryParts(array("where", "orderBy"))
+    test.Fatal(t,qb.String(),"SELECT u.* FROM users u")
+}
+ func TestCreateNamedParameter (t *testing.T) {
+{
+    qb   = db.NewQueryBuilder(connection)
+    qb.Select("u.*").From("users", "u").where(
+        qb.expr().eq("u.name", qb.createNamedParameter(10, \PDO::PARAM_INT))
+    )
+    test.Fatal(t,qb.String(),"SELECT u.* FROM users u WHERE u.name = :dcValue1")
+    test.Fatal(t,qb.String(),10, qb.getParameter("dcValue1"))
+    test.Fatal(t,qb.String(),\PDO::PARAM_INT, qb.getParameterType("dcValue1"))
+}
+ func TestCreateNamedParameterCustomPlaceholder (t *testing.T) {
+{
+    qb   = db.NewQueryBuilder(connection)
+    qb.Select("u.*").From("users", "u").where(
+        qb.expr().eq("u.name", qb.createNamedParameter(10, \PDO::PARAM_INT, ":test"))
+    )
+    test.Fatal(t,qb.String(),"SELECT u.* FROM users u WHERE u.name = :test")
+    test.Fatal(t,qb.String(),10, qb.getParameter("test"))
+    test.Fatal(t,qb.String(),\PDO::PARAM_INT, qb.getParameterType("test"))
+}
+ func TestCreatePositionalParameter (t *testing.T) {
+{
+    qb   = db.NewQueryBuilder(connection)
+    qb.Select("u.*").From("users", "u").where(
+        qb.expr().eq("u.name", qb.createPositionalParameter(10, \PDO::PARAM_INT))
+    )
+    test.Fatal(t,qb.String(),"SELECT u.* FROM users u WHERE u.name = ?")
+    test.Fatal(t,qb.String(),10, qb.getParameter(1))
+    test.Fatal(t,qb.String(),\PDO::PARAM_INT, qb.getParameterType(1))
+}
+/**
+ * @group DBAL-172
 */
 //      func TestReferenceJoinFromJoin (t *testing.T) {
 
-//         qb := db.NewBuilder(connection)
+//         qb := db.NewQueryBuilder(connection)
 //         qb.Select("COUNT(DISTINCT news.id)")
 //             .From("cb_newspages", "news")
 //             .InnerJoin("news", "nodeversion", "nv", "nv.refId = news.id AND nv.refEntityname=\"News\'')
@@ -525,7 +508,7 @@ func TestGetConnection(t *testing.T) {
 //      */
 //      func TestSelectFromMasterWithWhereOnJoinedTables (t *testing.T) {
 
-//         qb := db.NewBuilder(connection)
+//         qb := db.NewQueryBuilder(connection)
 //         qb.Select("COUNT(DISTINCT news.id)")
 //             .From("newspages", "news")
 //             .InnerJoin("news", "nodeversion", "nv", "nv.refId = news.id AND nv.refEntityname="Entity\\News"")
@@ -540,7 +523,7 @@ func TestGetConnection(t *testing.T) {
 //      */
 //      func TestSelectWithMultipleFromAndJoins (t *testing.T) {
 
-//         qb := db.NewBuilder(connection)
+//         qb := db.NewQueryBuilder(connection)
 //         qb.Select("DISTINCT u.id")
 //             .From("users", "u")
 //             .From("articles", "a")
@@ -553,31 +536,31 @@ func TestGetConnection(t *testing.T) {
 //     /**
 //      * @group DBAL-774
 //      */
-//      func TestSelectWithJoinsWithMultipleOnConditionsParseOrder (t *testing.T) {
+func TestSelectWithJoinsWithMultipleOnConditionsParseOrder(t *testing.T) {
+	t.Skip("join alias should also match alias in other joins if not found in from")
+	connection := NewTestConnection(t)
+	qb := db.NewQueryBuilder(connection)
+	qb.Select("a.id").
+		From("table_a", "a").
+		Join("a", "table_b", "b", "a.fk_b = b.id").
+		Join("b", "table_c", "c", "c.fk_b = b.id AND b.language = ?").
+		Join("a", "table_d", "d", "a.fk_d = d.id").
+		Join("c", "table_e", "e", "e.fk_c = c.id AND e.fk_d = d.id")
+	test.FatalWithDiff(t, qb.String(),
+		"SELECT a.id "+
+			"FROM table_a a "+
+			"INNER JOIN table_b b ON a.fk_b = b.id "+
+			"INNER JOIN table_d d ON a.fk_d = d.id "+
+			"INNER JOIN table_c c ON c.fk_b = b.id AND b.language = ? "+
+			"INNER JOIN table_e e ON e.fk_c = c.id AND e.fk_d = d.id")
+}
 
-//         qb := db.NewBuilder(connection)
-//         qb.Select("a.id")
-//             .From("table_a", "a")
-//             .join("a", "table_b", "b", "a.fk_b = b.id")
-//             .join("b", "table_c", "c", "c.fk_b = b.id AND b.language = ?")
-//             .join("a", "table_d", "d", "a.fk_d = d.id")
-//             .join("c", "table_e", "e", "e.fk_c = c.id AND e.fk_d = d.id")
-//         test.Fatal(t,qb.String(),
-//             "SELECT a.id " .
-//             "FROM table_a a " .
-//             "INNER JOIN table_b b ON a.fk_b = b.id " .
-//             "INNER JOIN table_d d ON a.fk_d = d.id " .
-//             "INNER JOIN table_c c ON c.fk_b = b.id AND b.language = ? " .
-//             "INNER JOIN table_e e ON e.fk_c = c.id AND e.fk_d = d.id",
-//             (string) qb
-//         )
-//     }
 //     /**
 //      * @group DBAL-774
 //      */
 //      func TestSelectWithMultipleFromsAndJoinsWithMultipleOnConditionsParseOrder (t *testing.T) {
 
-//         qb := db.NewBuilder(connection)
+//         qb := db.NewQueryBuilder(connection)
 //         qb.Select("a.id")
 //             .From("table_a", "a")
 //             .From("table_f", "f")
@@ -600,7 +583,7 @@ func TestGetConnection(t *testing.T) {
 //     }
 //      func TestClone (t *testing.T) {
 
-//         qb := db.NewBuilder(connection)
+//         qb := db.NewQueryBuilder(connection)
 //         qb.Select("u.id")
 //             .From("users", "u")
 //             .where("u.id = :test")
@@ -611,34 +594,40 @@ func TestGetConnection(t *testing.T) {
 //         this.assertFalse(qb.getQueryParts() === qb_clone.getQueryParts())
 //         this.assertFalse(qb.getParameters() === qb_clone.getParameters())
 //     }
-//      func TestSimpleSelectWithoutTableAlias (t *testing.T) {
+func TestSimpleSelectWithoutTableAlias(t *testing.T) {
+	connection := NewTestConnection(t)
+	qb := db.NewQueryBuilder(connection)
+	qb.Select("id").
+		From("users")
+	test.Fatal(t, qb.String(), "SELECT id FROM users")
+}
 
-//         qb := db.NewBuilder(connection)
-//         qb.Select("id")
-//             .From("users")
-//         test.Fatal(t,qb.String(),"SELECT id FROM users")
-//     }
 //      func TestSelectWithSimpleWhereWithoutTableAlias (t *testing.T) {
 
-//         qb := db.NewBuilder(connection)
+//         qb := db.NewQueryBuilder(connection)
 //         qb.Select("id", "name")
 //             .From("users")
 //             .where("awesome=9001")
 //         test.Fatal(t,qb.String(),"SELECT id, name FROM users WHERE awesome=9001")
 //     }
-//      func TestComplexSelectWithoutTableAliases (t *testing.T) {
-
-//         qb := db.NewBuilder(connection)
-//         qb.Select("DISTINCT users.id")
-//             .From("users")
-//             .From("articles")
-//             .InnerJoin("users", "permissions", "p", "p.user_id = users.id")
-//             .InnerJoin("articles", "comments", "c", "c.article_id = articles.id")
-//             .where("users.id = articles.user_id")
-//             .andWhere("p.read = 1")
-//         test.Fatal(t,qb.String(),"SELECT DISTINCT users.id FROM users INNER JOIN permissions p ON p.user_id = users.id, articles INNER JOIN comments c ON c.article_id = articles.id WHERE (users.id = articles.user_id) AND (p.read = 1)", qb.getSQL())
-//     }
+func TestComplexSelectWithoutTableAliases(t *testing.T) {
+	connection := NewTestConnection(t)
+	qb := db.NewQueryBuilder(connection)
+	qb.Select("DISTINCT users.id").
+		From("users").
+		From("articles").
+		InnerJoin("articles", "comments", "c", "c.article_id = articles.id").
+		InnerJoin("users", "permissions", "p", "p.user_id = users.id").
+		Where("users.id = articles.user_id").
+		AndWhere("p.read = 1")
+	test.FatalWithDiff(t, qb.String(),
+		"SELECT DISTINCT users.id FROM users INNER JOIN permissions p ON p.user_id"+
+			" = users.id, articles INNER JOIN comments c ON c.article_id = articles.id "+
+			"WHERE (users.id = articles.user_id) AND (p.read = 1)")
+}
 func TestComplexSelectWithSomeTableAliases(t *testing.T) {
+	// t.Skip("Skipped until the order of joins satisfies the doctrine specification")
+
 	connection := NewTestConnection(t)
 	qb := db.NewQueryBuilder(connection)
 	qb.Select("u.id").
@@ -646,7 +635,8 @@ func TestComplexSelectWithSomeTableAliases(t *testing.T) {
 		From("articles").
 		InnerJoin("u", "permissions", "p", "p.user_id = u.id").
 		InnerJoin("articles", "comments", "c", "c.article_id = articles.id")
-	test.Fatal(t, qb.String(), "SELECT u.id FROM users u INNER JOIN permissions p ON p.user_id = u.id, articles INNER JOIN comments c ON c.article_id = articles.id")
+	test.Fatal(t, qb.String(),
+		"SELECT u.id FROM users u INNER JOIN permissions p ON p.user_id = u.id, articles INNER JOIN comments c ON c.article_id = articles.id")
 }
 func TestSelectAllFromTableWithoutTableAlias(t *testing.T) {
 	connection := NewTestConnection(t)
@@ -668,7 +658,7 @@ func TestSelectAllWithoutTableAlias(t *testing.T) {
 //      */
 //      func TestGetParameterType (t *testing.T) {
 
-//         qb := db.NewBuilder(connection)
+//         qb := db.NewQueryBuilder(connection)
 //         qb.Select("*").From("users")
 //         this.assertNull(qb.getParameterType("name"))
 //         qb.where("name = :name")
@@ -682,7 +672,7 @@ func TestSelectAllWithoutTableAlias(t *testing.T) {
 //      */
 //      func TestGetParameterTypes (t *testing.T) {
 
-//         qb := db.NewBuilder(connection)
+//         qb := db.NewQueryBuilder(connection)
 //         qb.Select("*").From("users")
 //         this.assertSame(array(), qb.getParameterTypes())
 //         qb.where("name = :name")
@@ -698,7 +688,7 @@ func TestSelectAllWithoutTableAlias(t *testing.T) {
 //      */
 //      func TestJoinWithNonUniqueAliasThrowsException (t *testing.T) {
 
-//         qb := db.NewBuilder(connection)
+//         qb := db.NewQueryBuilder(connection)
 //         qb.Select("a.id")
 //             .From("table_a", "a")
 //             .join("a", "table_b", "a", "a.fk_b = a.id")

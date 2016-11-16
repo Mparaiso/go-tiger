@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Mparaiso/go-tiger/container"
 	"github.com/Mparaiso/go-tiger/db/expression"
 )
 
@@ -32,6 +33,26 @@ func (b QueryBuilder) GetType() Type {
 // GetConnection returns the db connection
 func (b QueryBuilder) GetConnection() Connection {
 	return b.connection
+}
+
+// GetfirstResult returns b.firstResult
+func (b QueryBuilder) GetFirstResult() int {
+	return b.firstResult
+}
+
+// SetfirstResult sets b.firstResult
+func (b *QueryBuilder) SetFirstResult(firstResult int) *QueryBuilder {
+	b.state = Dirty
+	b.firstResult = firstResult
+	return b
+}
+func (b *QueryBuilder) SetMaxResults(maxResults int) *QueryBuilder {
+	b.state = Dirty
+	b.maxResults = maxResults
+	return b
+}
+func (b QueryBuilder) GetMaxResults() int {
+	return b.maxResults
 }
 
 // Select Specifies an item that is to be returned in the query result.
@@ -136,6 +157,9 @@ func (b *QueryBuilder) AddGroupBy(groups ...string) *QueryBuilder {
 // Replaces any previous having restrictions, if any.
 func (b *QueryBuilder) Having(parts ...interface{}) *QueryBuilder {
 	return b.add(having, []interface{}{expression.And(parts...)}, false)
+}
+func (b *QueryBuilder) GetState() State {
+	return b.state
 }
 
 // AndHaving adds a restriction over the groups of the query, forming a logical
@@ -245,6 +269,7 @@ func (b *QueryBuilder) Set(field string, value interface{}) *QueryBuilder {
 	return b.add(set, []interface{}{field + " = " + fmt.Sprintf("%v", value)}, true)
 }
 
+// Delete creates a delete query
 func (b *QueryBuilder) Delete(table string, alias ...string) *QueryBuilder {
 	b.builderType = Delete
 	if len(alias) > 0 {
@@ -255,21 +280,27 @@ func (b *QueryBuilder) Delete(table string, alias ...string) *QueryBuilder {
 	return b.add(from, []interface{}{From{Table: table}}, false)
 }
 
+// Insert creates an Insert query
 func (b *QueryBuilder) Insert(table string) *QueryBuilder {
 	b.builderType = Insert
 	return b.add(insert, []interface{}{table}, false)
 }
 
-func (b *QueryBuilder) Values(FieldsAndValues map[string]interface{}) *QueryBuilder {
-	return b.add(values, []interface{}{Values(FieldsAndValues)}, false)
-}
+// TODO: using a map doesnt allow key/value pairs to be ordered. let's think about a proper API
+// that would fix that issue.
+// func (b *QueryBuilder) Values(FieldsAndValues map[string]interface{}) *QueryBuilder {
+// 	return b.add(values, []interface{}{Values(FieldsAndValues)}, false)
+// }
 
+// SetValue sets the values of an insert or update operation
 func (b *QueryBuilder) SetValue(field string, value interface{}) *QueryBuilder {
 	if valuePart, ok := b.sqlParts[values]; ok && len(valuePart) > 0 {
-		valuePart[0].(Values)[field] = value
+		valuePart[0].(Values).Set(field, value)
 		return b
 	}
-	return b.add(values, []interface{}{Values(map[string]interface{}{field: value})}, false)
+	Map := container.NewOrderedMap()
+	Map.Set(field, value)
+	return b.add(values, []interface{}{Values{Map}}, false)
 }
 
 // convert converts an []interface{} to []string
@@ -300,14 +331,76 @@ func (b *QueryBuilder) getSQLForUpdate() string {
 	return query
 }
 
+// TODO(mparaiso): Simplify that method.
+func (b *QueryBuilder) getSQLForFrom() string {
+	query := ""
+	// we need to know whether there are some join statements
+	joinPart, joinPartok := b.sqlParts[join]
+	// let's duplicate the join part slice
+	joinPartRest := make([]interface{}, len(joinPart))
+	if joinPartok {
+		copy(joinPartRest, joinPart)
+	}
+	// if from part exists
+	if fromPart, ok := b.sqlParts[from]; ok {
+		query += " FROM"
+		// strings.Join(b.convert(fromPart...), ", ")
+		// for each from part
+		for _, from := range fromPart {
+
+			f := from.(From)
+
+			// had to query
+			query += " " + f.String()
+			// if there are some join parts
+			if joinPartok {
+				indexes := []int{}
+				// if the from part and the join part have matching aliases
+				// or if the from table matches the joing part alias
+				for i, join := range joinPartRest {
+					j := join.(Join)
+					if f.Alias == j.FromAlias || f.Table == j.FromAlias {
+						// add to query right after the from part
+						query += " " + j.String()
+						indexes = append(indexes, i)
+					}
+				}
+				// we need to remove the join parts we have already added
+				temp := []interface{}{}
+				for i, joinPart := range joinPartRest {
+					found := false
+					for _, index := range indexes {
+						if index == i {
+							found = true
+							break
+						}
+					}
+					if !found {
+						temp = append(temp, joinPart)
+					}
+				}
+				joinPartRest = temp
+			}
+			query += ","
+		}
+		// remove the last coma if exists
+		query = strings.TrimRight(query, ",")
+	}
+	// if there are some join parts left, add them at the end of the from statement
+	if len(joinPartRest) > 0 {
+		query += " " + strings.Join(b.convert(joinPartRest...), " ")
+	}
+	return query
+}
 func (b *QueryBuilder) getSQLForSelect() string {
 	query := "SELECT " + strings.Join(b.convert(b.sqlParts[select_]...), ", ")
-	if fromPart, ok := b.sqlParts[from]; ok {
-		query += " FROM " + strings.Join(b.convert(fromPart...), ", ")
-	}
-	if joinPart, ok := b.sqlParts[join]; ok {
-		query += " " + strings.Join(b.convert(joinPart...), " ")
-	}
+	// if fromPart, ok := b.sqlParts[from]; ok {
+	// 	query += " FROM " + strings.Join(b.convert(fromPart...), ", ")
+	// }
+	// if joinPart, ok := b.sqlParts[join]; ok {
+	// 	query += " " + strings.Join(b.convert(joinPart...), " ")
+	// }
+	query += b.getSQLForFrom()
 	if wherePart, ok := b.sqlParts[where]; ok {
 		query += " WHERE " + strings.Join(b.convert(wherePart...), "")
 	}
@@ -370,7 +463,23 @@ func (b *QueryBuilder) String() string {
 	return b.sql
 }
 
+func (b *QueryBuilder) Prepare() *Statement {
+	return b.GetConnection().Prepare(b.String())
+}
+
+func (b *QueryBuilder) Query(arguments ...interface{}) *Rows {
+	return b.GetConnection().Query(b.String(), arguments...)
+}
+func (b *QueryBuilder) QueryRow(arguments ...interface{}) *Row {
+	return b.GetConnection().QueryRow(b.String(), arguments...)
+}
+
 type Type int
+
+var (
+	ErrNotASelectStatement = fmt.Errorf("Error the query is not a select statement")
+	ErrSelectStatement     = fmt.Errorf("Error the query is a select statement ")
+)
 
 const (
 	_ Type = iota
@@ -383,8 +492,8 @@ const (
 type State int
 
 const (
-	Dirty State = iota
-	Clean
+	Clean State = iota
+	Dirty
 )
 
 const (
@@ -407,14 +516,16 @@ const (
 
 type JoinType string
 
-type Values map[string]interface{}
+type Values struct {
+	*container.OrderedMap
+}
 
 func (v Values) String() string {
 	keys := []string{}
 	values := []string{}
-	for key, value := range v {
-		keys = append(keys, key)
-		values = append(values, fmt.Sprint(value))
+	for i := 0; i < v.OrderedMap.Length(); i++ {
+		keys = append(keys, fmt.Sprint(v.OrderedMap.KeyAt(i)))
+		values = append(values, fmt.Sprint(v.OrderedMap.ValueAt(i)))
 	}
 	return fmt.Sprintf("(%s) VALUES(%s)", strings.Join(keys, ", "), strings.Join(values, ", "))
 }
