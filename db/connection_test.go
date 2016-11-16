@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/Mparaiso/go-tiger/db"
+	"github.com/Mparaiso/go-tiger/db/expression"
+	"github.com/Mparaiso/go-tiger/logger"
 	"github.com/Mparaiso/go-tiger/test"
 	_ "github.com/amattn/go-sqlite3"
 	_ "github.com/go-sql-driver/mysql"
@@ -15,7 +17,8 @@ import (
 )
 
 type AppUser struct {
-	Name, Email string
+	Name  string `sql:"name"`
+	Email string `sql:"email"`
 	*UserInfos
 }
 
@@ -27,11 +30,11 @@ func TestConnectionGet(t *testing.T) {
 	err := LoadFixtures(connection)
 	test.Fatal(t, err, nil)
 	user := new(AppUser)
-	err = connection.Get(user, "SELECT name as Name,email as Email from users ;")
+	err = connection.QueryRow("SELECT name as Name,email as Email from users ;").GetResult(user)
 	test.Fatal(t, err, nil)
 	test.Fatal(t, user.Name, "John Doe")
 	user2 := AppUser{}
-	err = connection.Get(user2, "SELECT * from users ;")
+	err = connection.QueryRow("SELECT * from users ;").GetResult(user2)
 	test.Fatal(t, err, db.ErrNotAPointer)
 
 }
@@ -47,7 +50,7 @@ func TestConnectionSelect(t *testing.T) {
 
 	// test query
 	users := []*AppUser{}
-	err = connection.Select(&users, "SELECT users.name as Name, users.email as Email from users ORDER BY users.id ASC ;")
+	err = connection.Query("SELECT users.name as Name, users.email as Email from users ORDER BY users.id ASC ;").GetResults(&users)
 	test.Fatal(t, err, nil)
 	t.Logf("%#v", users)
 	test.Fatal(t, users[0].Name, "john doe")
@@ -60,7 +63,7 @@ func TestConnectionSelectMap(t *testing.T) {
 		t.Fatal(err)
 	}
 	var result []map[string]interface{}
-	err := connection.SelectMap(&result, "SELECT * FROM users ORDER BY ID")
+	err := connection.Query("SELECT * FROM users ORDER BY ID").GetResults(&result)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +82,7 @@ func TestConnectionSelectSlice(t *testing.T) {
 		t.Fatal(err)
 	}
 	var result [][]interface{}
-	err := connection.SelectSlice(&result, "SELECT id,name,created FROM users ORDER BY ID")
+	err := connection.Query("SELECT id,name,created FROM users ORDER BY ID").GetResults(&result)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,12 +96,49 @@ func TestConnectionSelectSlice(t *testing.T) {
 func TestConnectionPrepare(t *testing.T) {
 	connection := GetConnection(t)
 	defer connection.Close()
-	statement, err := connection.Prepare("SELECT * from users")
-	test.Fatal(t, err, nil)
-	result, err := statement.Exec()
+	result, err := connection.Prepare("SELECT * from users").Exec()
 	test.Fatal(t, err, nil)
 	test.Fatal(t, result != nil, true)
 }
+
+func TestConnectionCreateQueryBuilderPrepareExec(t *testing.T) {
+	connection := GetConnection(t)
+	user := &AppUser{Name: "robert", Email: "robert@example.com"}
+	result, err := connection.CreateQueryBuilder().
+		Insert("users").
+		SetValue("name", "?").
+		SetValue("email", "?").
+		Prepare().Exec(user.Name, user.Email)
+	test.Fatal(t, err, nil)
+	lastInsertedID, err := result.LastInsertId()
+	test.Fatal(t, err, nil)
+	test.Fatal(t, lastInsertedID, int64(1))
+}
+
+func TestConnectionCreateQueryBuilderQuery(t *testing.T) {
+	connection := GetConnection(t)
+	err := LoadFixtures(connection)
+	test.Fatal(t, err, nil)
+	connection.SetLogger(logger.NewTestLogger(t))
+	users := []*AppUser{}
+	err = connection.CreateQueryBuilder().
+		Select("u.name , u.email").
+		From("users", "u").
+		Where(expression.Neq("Name", "?")).
+		OrderBy("name", "ASC").
+		Query("Jack Doe").
+		GetResults(&users)
+	test.Fatal(t, err, nil)
+	test.Fatal(t, len(users), 2)
+	test.Fatal(t, users[0].Name, "Jane Doe")
+
+}
+
+/**
+ * HELPERS
+ */
+// Fixtures are not loaded automatically, this function should
+// be called explicitly
 func LoadFixtures(connection *db.DefaultConnection) error {
 	for _, user := range []AppUser{
 		{Name: "John Doe", Email: "john.doe@acme.com"},
