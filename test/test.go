@@ -16,12 +16,17 @@ package test
 
 import (
 	"fmt"
-	"path/filepath"
 	"runtime"
 	"testing"
 
 	"github.com/Mparaiso/go-tiger/logger"
+	"github.com/sergi/go-diff/diffmatchpatch"
 )
+
+var template = `%s 
+%s:%d
+want : '%+v'
+got  : '%+v'`
 
 // Fatal is a helper used to reduce the boilerplate during tests
 func Fatal(t *testing.T, got, want interface{}, comments ...string) {
@@ -34,7 +39,41 @@ func Fatal(t *testing.T, got, want interface{}, comments ...string) {
 			comment = "Expect"
 		}
 		_, file, line, _ := runtime.Caller(1)
-		t.Fatalf(fmt.Sprintf("Expect\r%s:%d:\r\t%s : %s", filepath.Base(file), line, comment, "want '%v' got '%v'."), want, got)
+		t.Fatalf(template, comment, file, line, want, got)
+	}
+}
+
+// FatalWithDiff is like test.Fatal with a textual diff between the 2 results
+func FatalWithDiff(t *testing.T, got, want interface{}, comments ...string) {
+	var comment string
+	if want != got {
+		if len(comments) > 0 {
+			comment = comments[0]
+
+		} else {
+			comment = "Expect"
+		}
+		_, file, line, _ := runtime.Caller(1)
+		diff := diffmatchpatch.New()
+		gotDiffed := diff.DiffPrettyText(diff.DiffMain(fmt.Sprintf("%+v", want), fmt.Sprintf("%+v", got), false))
+		t.Fatalf(template, comment, file, line, want, gotDiffed)
+	}
+}
+
+// ErrorWithDiff is like test.Error with a textual diff between the 2 results
+func ErrorWithDiff(t *testing.T, got, want interface{}, comments ...string) {
+	var comment string
+	if want != got {
+		if len(comments) > 0 {
+			comment = comments[0]
+
+		} else {
+			comment = "Expect"
+		}
+		_, file, line, _ := runtime.Caller(1)
+		diff := diffmatchpatch.New()
+		gotDiffed := diff.DiffPrettyText(diff.DiffMain(fmt.Sprintf("%+v", want), fmt.Sprintf("%+v", got), false))
+		t.Errorf(template, comment, file, line, want, gotDiffed)
 	}
 }
 
@@ -49,7 +88,7 @@ func Error(t *testing.T, got, want interface{}, comments ...string) {
 			comment = "Expect"
 		}
 		_, file, line, _ := runtime.Caller(1)
-		t.Errorf(fmt.Sprintf("Expect\r%s:%d:\r\t%s : %s", filepath.Base(file), line, comment, "want '%v' got '%v'."), want, got)
+		t.Errorf(template, comment, file, line, want, got)
 	}
 
 }
