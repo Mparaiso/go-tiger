@@ -44,6 +44,7 @@ type Connection interface {
 	CreateQueryBuilder() *QueryBuilder
 	Exec(query string, parameters ...interface{}) (sql.Result, error)
 	GetDatabasePlatform() platform.DatabasePlatform
+	GetDatabase() string
 	GetDriverName() string
 	Prepare(sql string) *Statement
 	Query(sql string, arguments ...interface{}) *Rows
@@ -60,15 +61,17 @@ type ConnectionOptions struct {
 // DefaultConnection is a database connection.
 // Please use NewConnectionto create a Connection.
 type DefaultConnection struct {
-	Db         *sql.DB
-	DriverName string
-	Options    *ConnectionOptions
-	Platform   platform.DatabasePlatform
+	Db            *sql.DB
+	DriverName    string
+	Options       *ConnectionOptions
+	Platform      platform.DatabasePlatform
+	schemaManager SchemaManager
 }
 
 // NewConnection creates an new Connection
 func NewConnection(driverName string, DB *sql.DB) *DefaultConnection {
 	connection := NewConnectionWithOptions(driverName, DB, &ConnectionOptions{})
+
 	return connection
 }
 
@@ -82,8 +85,18 @@ func (connection *DefaultConnection) GetOptions() *ConnectionOptions {
 	}
 	return connection.Options
 }
+
+// SetLogger sets the connection logger.Logger
 func (connection *DefaultConnection) SetLogger(Logger logger.Logger) {
 	connection.GetOptions().Logger = Logger
+}
+
+// GetSchemaManager returns the schema manager
+func (connection *DefaultConnection) GetSchemaManager() SchemaManager {
+	if connection.schemaManager == nil {
+		connection.detectSchemaManager()
+	}
+	return connection.schemaManager
 }
 
 // GetDriverName returns the DriverName
@@ -95,6 +108,9 @@ func (connection *DefaultConnection) GetDriverName() string {
 func (connection *DefaultConnection) CreateQueryBuilder() *QueryBuilder {
 	return NewQueryBuilder(connection)
 }
+func (connection *DefaultConnection) GetDatabase() string {
+	return ""
+}
 
 // GetDatabasePlatform returns the database platform
 func (connection *DefaultConnection) GetDatabasePlatform() platform.DatabasePlatform {
@@ -102,6 +118,19 @@ func (connection *DefaultConnection) GetDatabasePlatform() platform.DatabasePlat
 		connection.detectDatabasePlatform()
 	}
 	return connection.Platform
+}
+func (connection *DefaultConnection) detectSchemaManager() {
+	schemaManager := NewDefaultSchemaManager(connection, connection.GetDatabasePlatform())
+	switch connection.GetDriverName() {
+	case "sqlite3", "sqlite":
+		connection.schemaManager = NewSqliteSchemaManager(schemaManager)
+	case "mysql":
+		connection.schemaManager = NewMysqlSchemaManager(schemaManager)
+	case "postgresql":
+		connection.schemaManager = NewPostgreSQLSchemaManager(schemaManager)
+	default:
+		connection.schemaManager = schemaManager
+	}
 }
 func (connection *DefaultConnection) detectDatabasePlatform() {
 	databasePlatform := platform.NewDefaultPlatform()
@@ -389,7 +418,15 @@ func (row *Row) GetResult(pointerToStruct interface{}) error {
 	pointerOfSliceOfRecords := reflect.New(sliceOfRecords.Type())
 	pointerOfSliceOfRecords.Elem().Set(sliceOfRecords)
 	//
-	err := MapRowsToSliceOfStruct(row.rows, pointerOfSliceOfRecords.Interface(), true)
+	var err error
+	switch Type := pointerOfSliceOfRecords.Interface().(type) {
+	case *[]map[string]interface{}:
+		err = MapRowsToSliceOfMaps(row.rows, Type)
+	case *[][]interface{}:
+		err = MapRowsToSliceOfSlices(row.rows, Type)
+	default:
+		err = MapRowsToSliceOfStruct(row.rows, pointerOfSliceOfRecords.Interface(), true)
+	}
 	if err != nil {
 		return err
 	}
