@@ -23,7 +23,9 @@ import (
 	"github.com/Mparaiso/go-tiger/test"
 )
 
-type TestDatabasePlatform struct{}
+type TestDatabasePlatform struct {
+	platform.DefaultPlatform
+}
 
 func (platform *TestDatabasePlatform) ModifyLimitQuery(query string, maxResult int, firstResult int) string {
 	return ""

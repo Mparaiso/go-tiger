@@ -1,6 +1,7 @@
 package platform
 
 import "fmt"
+import "strings"
 
 type SqlitePlatform struct {
 	DatabasePlatform
@@ -8,6 +9,12 @@ type SqlitePlatform struct {
 
 func NewSqlitePlatform(databasePlatform DatabasePlatform) *SqlitePlatform {
 	return &SqlitePlatform{DatabasePlatform: databasePlatform}
+}
+
+func (platform SqlitePlatform) GetListTableColumnsSQL(table string, database ...string) string {
+	table = strings.Replace(".", "__", table, -1)
+	table = platform.QuoteStringLiteral(table)
+	return "PRAGMA table_info($table)"
 }
 
 func (platform SqlitePlatform) ModifyLimitQuery(query string, limit, offset int) string {

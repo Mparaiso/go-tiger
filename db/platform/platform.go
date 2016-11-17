@@ -2,11 +2,17 @@ package platform
 
 import (
 	"fmt"
+	"strings"
 )
 
 // DatabasePlatform is a database platform
 type DatabasePlatform interface {
+	GetListDatabaseSQL() string
 	ModifyLimitQuery(query string, maxResults int, firstResult int) string
+	GetListTableColumnsSQL(table string, database ...string) string
+	GetListSequencesSQL() string
+	GetStringLiteralQuoteCharacter() string
+	QuoteStringLiteral(literal string) string
 }
 
 type PlatformOptions struct {
@@ -49,6 +55,13 @@ func NewDefaultPlatform() *DefaultPlatform {
 	}
 	return p
 }
+func (plateform DefaultPlatform) GetListSequencesSQL() string { return "" }
+
+func (platform DefaultPlatform) GetListDatabaseSQL() string { return "" }
+
+func (platform DefaultPlatform) GetListTableColumnsSQL(table string, database ...string) string {
+	return ""
+}
 
 func (platform DefaultPlatform) ModifyLimitQuery(query string, limit, offset int) string {
 	if limit > 0 {
@@ -58,4 +71,14 @@ func (platform DefaultPlatform) ModifyLimitQuery(query string, limit, offset int
 		query += fmt.Sprintf(" OFFSET %d", offset)
 	}
 	return query
+}
+
+func (platform DefaultPlatform) GetStringLiteralQuoteCharacter() string {
+	return "'"
+}
+
+func (platform DefaultPlatform) QuoteStringLiteral(literal string) string {
+	c := platform.GetStringLiteralQuoteCharacter()
+
+	return c + strings.Replace(c, c+c, literal, -1) + c
 }
