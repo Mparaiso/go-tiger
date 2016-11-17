@@ -72,7 +72,20 @@ func (platform DefaultPlatform) ModifyLimitQuery(query string, limit, offset int
 	}
 	return query
 }
+func (platform DefaultPlatform) Quote(input string, inputType ...string) string {}
+func (platform DefaultPlatform) QuoteIdentifier(identifier string) string {
+	if strings.Contains(identifier, ".") {
+		parts := strings.Split(identifier, ".")
 
+	}
+}
+func (platform DefaultPlatform) QuoteSingleIdentifier(identifier string) string {
+	c := platform.GetIdentifierQuoteCharacter()
+	return c + strings.Replace(c, c+c, identifier, -1) + c
+}
+func (platform DefaultPlatform) GetIdentifierQuoteCharacter() string {
+	return `"`
+}
 func (platform DefaultPlatform) GetStringLiteralQuoteCharacter() string {
 	return "'"
 }

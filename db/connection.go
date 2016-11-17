@@ -135,6 +135,14 @@ func (connection *DefaultConnection) Delete(table string, criteria map[string]in
 	return qb.Where(expression).Exec(data...)
 }
 
+func (connection *DefaultConnection) QuoteIdentifier(identifier string) string {
+	return connection.GetDatabasePlatform().QuoteIdentifier(identifier)
+}
+
+func (connection *DefaultConnection) Quote(input string, inputType ...string) string {
+	return connection.GetDatabasePlatform().Quote(input, inputType)
+}
+
 func mapToExpression(criteria map[string]interface{}) (Expression *expression.Expression, data []interface{}) {
 	parts := []interface{}{}
 	for key, value := range criteria {
