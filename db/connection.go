@@ -49,6 +49,7 @@ type Connection interface {
 	Query(sql string, arguments ...interface{}) *Rows
 	QueryRow(sql string, arguments ...interface{}) *Row
 	SetLogger(logger.Logger)
+	Quote(input string, inputType ...string) string
 }
 
 // ConnectionOptions gather options related to Connection type.
@@ -139,23 +140,10 @@ func (connection *DefaultConnection) QuoteIdentifier(identifier string) string {
 	return connection.GetDatabasePlatform().QuoteIdentifier(identifier)
 }
 
+// Quote quotes a string
+// TODO: obviously a PDO method, try to find an equivalent in Go
 func (connection *DefaultConnection) Quote(input string, inputType ...string) string {
-	return connection.GetDatabasePlatform().Quote(input, inputType)
-}
-
-func mapToExpression(criteria map[string]interface{}) (Expression *expression.Expression, data []interface{}) {
-	parts := []interface{}{}
-	for key, value := range criteria {
-		switch {
-		case regexp.MustCompile(`^\w+$`).MatchString(strings.TrimSpace(key)):
-			parts = append(parts, expression.Eq(key, "?"))
-		default:
-			parts = append(parts, key+" ? ")
-		}
-		data = append(data, value)
-	}
-	Expression = expression.And(parts...)
-	return
+	return connection.GetDatabasePlatform().Quote(input, inputType...)
 }
 
 // Update executes an SQL UPDATE statement on a table.
@@ -447,4 +435,19 @@ func (rows *Rows) GetResults(pointer interface{}) error {
 	default:
 		return MapRowsToSliceOfStruct(rows.rows, Type, true)
 	}
+}
+
+func mapToExpression(criteria map[string]interface{}) (Expression *expression.Expression, data []interface{}) {
+	parts := []interface{}{}
+	for key, value := range criteria {
+		switch {
+		case regexp.MustCompile(`^\w+$`).MatchString(strings.TrimSpace(key)):
+			parts = append(parts, expression.Eq(key, "?"))
+		default:
+			parts = append(parts, key+" ? ")
+		}
+		data = append(data, value)
+	}
+	Expression = expression.And(parts...)
+	return
 }

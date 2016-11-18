@@ -35,7 +35,7 @@ func (platform *TestDatabasePlatform) SetParent(platform.DatabasePlatform)  {}
 func (platform *TestDatabasePlatform) GetParent() platform.DatabasePlatform { return nil }
 
 type TestConnection struct {
-	platform.DatabasePlatform
+	DatabasePlatform platform.DatabasePlatform
 	db.Connection
 }
 
