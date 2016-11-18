@@ -13,6 +13,8 @@ type DatabasePlatform interface {
 	GetListSequencesSQL() string
 	GetStringLiteralQuoteCharacter() string
 	QuoteStringLiteral(literal string) string
+	Quote(string, ...string) string
+	QuoteIdentifier(string) string
 }
 
 type PlatformOptions struct {
@@ -55,10 +57,14 @@ func NewDefaultPlatform() *DefaultPlatform {
 	}
 	return p
 }
+
+// TODO: complete
 func (plateform DefaultPlatform) GetListSequencesSQL() string { return "" }
 
+// TODO: complete
 func (platform DefaultPlatform) GetListDatabaseSQL() string { return "" }
 
+// TODO: complete
 func (platform DefaultPlatform) GetListTableColumnsSQL(table string, database ...string) string {
 	return ""
 }
@@ -72,12 +78,24 @@ func (platform DefaultPlatform) ModifyLimitQuery(query string, limit, offset int
 	}
 	return query
 }
-func (platform DefaultPlatform) Quote(input string, inputType ...string) string {}
+
+// Quote quotes a string
+// TODO: obviously a PDO method, try to find an equivalent in Go
+func (platform DefaultPlatform) Quote(input string, inputType ...string) string {
+	return input
+}
+
+// QuoteIdentifier quotes a string so that it can be safely used as a table or column name,
+// even if it is a reserved word of the platform. This also detects identifier
+// chains separated by dot and quotes them independently.
 func (platform DefaultPlatform) QuoteIdentifier(identifier string) string {
 	if strings.Contains(identifier, ".") {
 		parts := strings.Split(identifier, ".")
-
+		return strings.Join(mapStringsToStrings(parts, func(str string) string {
+			return platform.QuoteSingleIdentifier(str)
+		}), ".")
 	}
+	return platform.QuoteSingleIdentifier(identifier)
 }
 func (platform DefaultPlatform) QuoteSingleIdentifier(identifier string) string {
 	c := platform.GetIdentifierQuoteCharacter()
