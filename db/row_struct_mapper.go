@@ -185,9 +185,7 @@ func MapRowToStruct(columns []string, scanner Scanner, Struct interface{}, ignor
 		if field == zeroValue {
 			if ignoreMissingFields {
 				pointer := reflect.New(reflect.TypeOf([]byte{}))
-				pointer.Elem().Set(reflect.ValueOf([]byte{}))
 				arrayOfResults = append(arrayOfResults, pointer.Interface())
-
 			} else {
 				return fmt.Errorf("No field found for column %s in struct %#v", column, Struct)
 

@@ -5,6 +5,9 @@ TIGER
 
 [![Build Status](https://travis-ci.org/Mparaiso/go-tiger.svg?branch=master)](https://travis-ci.org/Mparaiso/go-tiger)
 
+
+[![codebeat badge](https://codebeat.co/badges/bff186bc-1b39-4d22-9c07-159844cc1c87)](https://codebeat.co/projects/github-com-mparaiso-go-tiger)
+
 author: mparaiso <mparaiso@online.fr>
 
 license: Apache 2-0
