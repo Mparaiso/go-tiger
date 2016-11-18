@@ -119,6 +119,21 @@ func ExampleConnection() {
 
 }
 
+func TestRowGetResult(t *testing.T) {
+	connection := db.NewConnection(GetDB(t))
+	err := LoadFixtures(connection)
+	test.Fatal(t, err, nil)
+	result := map[string]interface{}{}
+	err = connection.CreateQueryBuilder().
+		Select("u.*").
+		From("users", "u").
+		Where("u.name = ?").
+		QueryRow("John Doe").
+		GetResult(&result)
+	test.Fatal(t, err, nil)
+	test.Fatal(t, result["email"], "john.doe@acme.com")
+}
+
 func TestConnectionGet(t *testing.T) {
 	connection := db.NewConnection(GetDB(t))
 	err := LoadFixtures(connection)

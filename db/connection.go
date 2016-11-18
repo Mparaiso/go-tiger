@@ -67,10 +67,20 @@ type DefaultConnection struct {
 	Platform   platform.DatabasePlatform
 }
 
-// NewConnection creates an new Connection
+// NewConnection creates an  Connection
 func NewConnection(driverName string, DB *sql.DB) *DefaultConnection {
 	connection := NewConnectionWithOptions(driverName, DB, &ConnectionOptions{})
+	connection.Options.IgnoreMissingFields = true
 	return connection
+}
+
+// NewConnectionWithString returns a  Connection or an error if the database connection failed
+func NewConnectionWithString(driverName string, connectionString string) (*DefaultConnection, error) {
+	db, err := sql.Open(driverName, connectionString)
+	if err != nil {
+		return nil, err
+	}
+	return NewConnection(driverName, db), nil
 }
 
 // NewConnectionWithOptions creates an new connection with optional settings such as Logging.
@@ -157,10 +167,9 @@ func (connection *DefaultConnection) Update(table string, criteria map[string]in
 			qb.Set(key, "?")
 			data = append(data, value)
 		}
-		for key, value := range criteria {
-			qb.AndWhere(expression.Eq(key, "?"))
-			data = append(data, value)
-		}
+		Expression, expressionData := mapToExpression(criteria)
+		qb.Where(Expression)
+		data = append(data, expressionData...)
 
 		return qb.Exec(data...)
 	default:
@@ -353,7 +362,6 @@ func (statement *Statement) QueryRow(arguments ...interface{}) *Row {
 type Row struct {
 	err  error
 	rows *sql.Rows
-	row  *sql.Row
 }
 
 func NewRow(rows *sql.Rows, err error) *Row {
@@ -373,26 +381,51 @@ func (row *Row) GetSingleResult(pointer interface{}) error {
 	return row.rows.Scan(pointer)
 }
 
-// GetResult assigns the db row to pointerToStruct
-func (row *Row) GetResult(pointerToStruct interface{}) error {
+// GetResult assigns the db row to a pointer
+// pointer can be either a pointer to struct,
+// *[]interface{} or
+// *map[string]interface{}
+func (row *Row) GetResult(pointer interface{}) error {
 	defer row.rows.Close()
-	if reflect.TypeOf(pointerToStruct).Kind() != reflect.Ptr {
-		return ErrNotAPointer
-	}
-	recordValue := reflect.ValueOf(pointerToStruct)
-	recordType := recordValue.Type()
-	sliceOfRecords := reflect.MakeSlice(reflect.SliceOf(recordType), 0, 1)
-	pointerOfSliceOfRecords := reflect.New(sliceOfRecords.Type())
-	pointerOfSliceOfRecords.Elem().Set(sliceOfRecords)
-	//
-	err := MapRowsToSliceOfStruct(row.rows, pointerOfSliceOfRecords.Interface(), true)
-	if err != nil {
-		return err
-	}
-	if pointerOfSliceOfRecords.Elem().Len() >= 1 {
-		recordValue.Elem().Set(reflect.Indirect(pointerOfSliceOfRecords).Index(0).Elem())
-	} else {
-		return sql.ErrNoRows
+	switch value := pointer.(type) {
+	case *[]interface{}:
+		var slices [][]interface{}
+		err := MapRowsToSliceOfSlices(row.rows, &slices)
+		if err != nil {
+			return err
+		}
+		if len(slices) == 0 {
+			return sql.ErrNoRows
+		}
+		*value = slices[0]
+	case *map[string]interface{}:
+		var maps []map[string]interface{}
+		err := MapRowsToSliceOfMaps(row.rows, &maps)
+		if err != nil {
+			return err
+		}
+		if len(maps) == 0 {
+			return sql.ErrNoRows
+		}
+		*value = maps[0]
+	default:
+		Value := reflect.ValueOf(value)
+		Type := Value.Type()
+		if Type.Kind() != reflect.Ptr {
+			return ErrNotAPointer
+		}
+		if Type.Elem().Kind() != reflect.Struct {
+			return ErrNotAStruct
+		}
+		Collection := reflect.New(reflect.SliceOf(Type))
+		err := MapRowsToSliceOfStruct(row.rows, Collection.Interface(), true)
+		if err != nil {
+			return err
+		}
+		if Collection.Elem().Len() == 0 {
+			return sql.ErrNoRows
+		}
+		Value.Elem().Set(Collection.Elem().Index(0).Elem())
 	}
 	return nil
 }
