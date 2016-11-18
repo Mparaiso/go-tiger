@@ -46,10 +46,12 @@ func ExampleConnection() {
 	t := test.ExampleTester{log.New(os.Stderr, "log-tester", log.LstdFlags)}
 	// Define a type that represents a table
 	type TestUser struct {
-		ID      int64     `sql:"column:id"`
-		Name    string    `sql:"column:name"`  // db field name will match the content of the tag if declared
-		Email   string    `sql:"column:email"` // fieldnames are not automatically lower-cased to match db field names
-		Created time.Time `sql:"column:created"`
+		ID           int64     `sql:"column:id"`
+		Name         string    `sql:"column:name"`  // db field name will match the content of the tag if declared
+		Email        string    `sql:"column:email"` // fieldnames are not automatically lower-cased to match db field names
+		Created      time.Time `sql:"column:created"`
+		Nickname     string    `sql:"column:nick_name,persistzerovalue"` // allow empty strings or zero values to be persisted
+		PhoneNumbers []string  `sql:"-"`                                 // ignore field
 	}
 	var err error
 	// initialize the driver
@@ -57,12 +59,14 @@ func ExampleConnection() {
 	test.Fatal(t, err, nil)
 	// create a connection
 	connection := db.NewConnection("sqlite3", DB)
+	connection.SetLogger(logger.NewDefaultLogger())
 	// create a table
 	_, err = connection.Exec(`
 		CREATE TABLE users(
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			name VARCHAR(255) UNIQUE NOT NULL,
 			email VARCHAR(255) UNIQUE NOT NULL,
+			nick_name VARCHAR(255) NOT NULL,
 			created TIMESTAMP NOT NULL DEFAULT(datetime('now'))
 		);`)
 	test.Fatal(t, err, nil)
@@ -80,7 +84,8 @@ func ExampleConnection() {
 		Insert("users").
 		SetValue("name", "?").
 		SetValue("email", "?").
-		Exec("Jane Doe", "jane.doe@example.com")
+		SetValue("nick_name", "?").
+		Exec("Jane Doe", "jane.doe@example.com", "Jannie")
 	test.Fatal(t, err, nil)
 	// fetch the first inserted user
 	candidate := &TestUser{}
@@ -241,6 +246,15 @@ func TestConnectionCreateQueryBuilderQuery(t *testing.T) {
 	test.Fatal(t, len(users), 2)
 	test.Fatal(t, users[0].Name, "Jane Doe")
 
+}
+
+func TestConnectionArray(t *testing.T) {
+	connection := GetConnection(t)
+	LoadFixtures(connection)
+	var users []*AppUser
+	err := connection.Query("SELECT * FROM users WHERE name IN (?,?)", []interface{}{"John Doe", "Jane Doe"}...).GetResults(&users)
+	test.Fatal(t, err, nil)
+	test.Fatal(t, len(users), 2)
 }
 
 /**

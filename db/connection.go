@@ -187,6 +187,9 @@ func (connection *DefaultConnection) Update(table string, criteria map[string]in
 					continue
 				}
 				sqlTag := SQLStructTagBuilder{}.BuildFromString(Tag)
+				if !sqlTag.PersistZeroValue && Field.Type().Comparable() && reflect.Zero(Field.Type()).Interface() == Field.Interface() {
+					continue
+				}
 				if sqlTag.ColumnName != "" {
 					values[sqlTag.ColumnName] = Field.Interface()
 					continue
@@ -225,6 +228,10 @@ func (connection *DefaultConnection) Insert(tableName string, data interface{}) 
 			fieldValue, fieldType := Value.Field(i), Value.Field(i).Type()
 			stringTag, ok := Type.Field(i).Tag.Lookup("sql")
 			if ok {
+				if stringTag == "-" {
+					// omit this field
+					continue
+				}
 				tags := SQLStructTagBuilder{}.BuildFromString(stringTag)
 				// if no "persistZeroValue" tag and value is zero then don't persist
 				if !tags.PersistZeroValue && fieldValue.Interface() == reflect.Zero(fieldType).Interface() {
@@ -232,9 +239,6 @@ func (connection *DefaultConnection) Insert(tableName string, data interface{}) 
 				}
 				if tags.ColumnName != "" {
 					data[tags.ColumnName] = fieldValue.Interface()
-					continue
-				} else if stringTag == "-" {
-					// omit this field
 					continue
 				}
 			}

@@ -60,13 +60,13 @@ func TestMapRowsToSliceOfStruct(t *testing.T) {
 }
 
 func TestSQLTagBuilder(t *testing.T) {
-	tag := "column:id"
+	tag := "column:nick_name"
 	sqlTag := db.SQLStructTagBuilder{logger.NewTestLogger(t)}.BuildFromString(tag)
-	test.Fatal(t, sqlTag.ColumnName, "id")
+	test.Fatal(t, sqlTag.ColumnName, "nick_name")
 	test.Fatal(t, sqlTag.PersistZeroValue, false)
-	tag = "column:email,persistzerovalue"
+	tag = "column:email_address,persistzerovalue"
 	sqlTag = db.SQLStructTagBuilder{logger.NewTestLogger(t)}.BuildFromString(tag)
-	test.Fatal(t, sqlTag.ColumnName, "email")
+	test.Fatal(t, sqlTag.ColumnName, "email_address")
 	test.Fatal(t, sqlTag.PersistZeroValue, true)
 }
 

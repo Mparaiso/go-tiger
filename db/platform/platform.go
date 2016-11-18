@@ -111,5 +111,5 @@ func (platform DefaultPlatform) GetStringLiteralQuoteCharacter() string {
 func (platform DefaultPlatform) QuoteStringLiteral(literal string) string {
 	c := platform.GetStringLiteralQuoteCharacter()
 
-	return c + strings.Replace(c, c+c, literal, -1) + c
+	return c + strings.Replace(literal, c, c+c, -1) + c
 }
