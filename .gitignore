@@ -1,3 +1,4 @@
 testdata/trash/*
 *.exe
 .vscode
+debug
