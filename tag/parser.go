@@ -26,22 +26,27 @@ import (
 )
 
 // Parser parses the content of a single struct tag
-type Parser struct {
+type Parser interface {
+	SetLogger(logger.Logger)
+	Parse() ([]*Definition, error)
+}
+
+type defaultParser struct {
 	reader  io.Reader
 	logger  logger.Logger
 	scanner scanner.Scanner
 }
 
 // NewParser creates a *Parser value
-func NewParser(reader io.Reader) *Parser {
-	return &Parser{reader: reader}
+func NewParser(reader io.Reader) Parser {
+	return &defaultParser{reader: reader}
 }
 
 // SetLogger enables logging for the parser
-func (parser *Parser) SetLogger(logger logger.Logger) {
+func (parser *defaultParser) SetLogger(logger logger.Logger) {
 	parser.logger = logger
 }
-func (parser Parser) log(level int, messages ...interface{}) {
+func (parser defaultParser) log(level int, messages ...interface{}) {
 	if parser.logger != nil {
 		parser.logger.Log(level, messages...)
 	}
@@ -68,7 +73,7 @@ type Parameter struct {
 }
 
 // Parse parses a tag
-func (parser *Parser) Parse() (definitions []*Definition, err error) {
+func (parser *defaultParser) Parse() (definitions []*Definition, err error) {
 
 	parser.scanner = scanner.Scanner{}
 	parser.scanner.Init(parser.reader)
@@ -138,7 +143,7 @@ func (parser *Parser) Parse() (definitions []*Definition, err error) {
 	}
 	return
 }
-func (parser *Parser) errorUnexpectedToken() error {
+func (parser *defaultParser) errorUnexpectedToken() error {
 	parser.log(logger.Error, "found", parser.scanner.TokenText())
 	return fmt.Errorf("Error unexpected token '%s' at position %d in ", parser.scanner.TokenText(), parser.scanner.Pos().Column)
 }
