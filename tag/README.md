@@ -1,5 +1,5 @@
 Package tag provides a tag parser for struct tags.
-This is the grammar for a single struct tag :
+This is the grammar for a single struct tag using Backus Naur Form [BNF](https://en.wikipedia.org/wiki/Backus–Naur_form) :
 
 	<tag>           ::= <definition> { ";" <definition> }
 	<definition>    ::= <id>
