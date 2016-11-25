@@ -34,9 +34,11 @@ func Must(err error) error {
 }
 
 // MakeReduce creates a reduce function from a pointer function with the following signatures :
-// reduce(collection []A, reducer func(result B,element A)B , initial B )B
-// reduce(collection []A, reducer func(result B,element A,index int)B , initial B)B
-// reduce(collection []A, reducer func(result B,element A,index int, collection []A) , initial B)B
+//
+// 		reduce(collection []A, reducer func(result B,element A)B , initial B )B
+//		reduce(collection []A, reducer func(result B,element A,index int)B , initial B)B
+//		reduce(collection []A, reducer func(result B,element A,index int, collection []A) , initial B)B
+//
 // or returns an error if types do not match
 //
 // MakeReduce allow developers to quickly create reduce functions
@@ -147,12 +149,15 @@ func MakeReduce(pointerToFunction interface{}) error {
 }
 
 // MakeMap creates a map function from a pointer to function with the following signatures :
-// map(collection []A, mapper func(A)B )[]B
-// map(collection []A, mapper func(A,int)B )[]B
-// map(collection []A, mapper func(A,int,[]A)B )[]B
+//
+//		map(collection []A, mapper func(A)B )[]B
+//		map(collection []A, mapper func(A,int)B )[]B
+//		map(collection []A, mapper func(A,int,[]A)B )[]B
+//
 // or return an error if types do not match
 //
 // Example:
+//
 //		type Person struct { Name string }
 //		var mapPersonsToStrings func(persons []Person,mapper func(person Person)string)[]string
 //      err := funcs.MakeMapper(&mapPersonsToStrings)
@@ -229,7 +234,9 @@ func MakeMap(pointerToFunction interface{}) error {
 }
 
 // MakeIndexOf creates an indexOf function from a pointer to function using the following signature :
-// indexOf([]T,T)int
+//
+// 		indexOf([]T,T)int
+//
 // or returns an error if types do not match
 func MakeIndexOf(pointerToFunction interface{}) error {
 	Value := reflect.ValueOf(pointerToFunction)
@@ -289,9 +296,11 @@ func MakeIndexOf(pointerToFunction interface{}) error {
 }
 
 // MakeInclude creates an include function from a pointer to function using the following signature :
-// indexOf([]T,T)bool
-// or returns an error if types do not match
-// include returns true if element T exists in collection []T ,else returns false
+//
+//		include([]T,T)bool
+//
+// or returns an error if types do not match.
+// include returns true if element T exists in collection []T ,else returns false.
 func MakeInclude(pointerToFunction interface{}) error {
 	Value := reflect.ValueOf(pointerToFunction)
 	// expect a pointer
