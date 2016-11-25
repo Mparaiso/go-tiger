@@ -54,6 +54,7 @@ func SubTestDocumentManager_FindOne(dm mongo.DocumentManager, t *testing.T) {
 	test.Fatal(t, user.Role != nil, true)
 	test.Fatal(t, user.Role.Title, "Editor")
 	SubTestDocumentManager_FindID(user.ID, dm, t)
+	SubTestDocumentManager_Remove(user.ID, dm, t)
 }
 
 func SubTestDocumentManager_FindID(id bson.ObjectId, dm mongo.DocumentManager, t *testing.T) {
@@ -61,6 +62,25 @@ func SubTestDocumentManager_FindID(id bson.ObjectId, dm mongo.DocumentManager, t
 	err := dm.FindID(id, user)
 	test.Fatal(t, err, nil)
 	test.Fatal(t, user.ID, id)
+}
+
+func SubTestDocumentManager_Remove(id bson.ObjectId, dm mongo.DocumentManager, t *testing.T) {
+	user := new(User)
+	err := dm.FindID(id, user)
+	test.Fatal(t, err, nil)
+	test.Fatal(t, len(user.Posts), 1)
+	postID := user.Posts[0].ID
+	roleID := user.Role.ID
+	dm.Remove(user)
+	dm.Flush()
+	err = dm.FindID(id, user)
+	test.Fatal(t, err, mgo.ErrNotFound)
+	post := new(Post)
+	err = dm.FindID(postID, post)
+	test.Fatal(t, err, mgo.ErrNotFound)
+	role := new(Role)
+	err = dm.FindID(roleID, role)
+	test.Fatal(t, err, nil)
 }
 
 func GetDocumentManager(t *testing.T) (dm mongo.DocumentManager, done func()) {
