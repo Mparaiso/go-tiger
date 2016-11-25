@@ -33,9 +33,12 @@ func Must(err error) error {
 	return err
 }
 
-// MakeReduce sets pointerToFunction to a reduce function
-// with corresponding signature or returns an error
-// if the signature doesn't match the one of a reduce function.
+// MakeReduce creates a reduce function from a pointer function with the following signatures :
+// reduce(collection []A, reducer func(result B,element A)B , initial B )B
+// reduce(collection []A, reducer func(result B,element A,index int)B , initial B)B
+// reduce(collection []A, reducer func(result B,element A,index int, collection []A) , initial B)B
+// or returns an error if types do not match
+//
 // MakeReduce allow developers to quickly create reduce functions
 // without starting from scratch each time they need basic functional
 // programming capabilities. Result also allows type safety.
@@ -143,7 +146,11 @@ func MakeReduce(pointerToFunction interface{}) error {
 
 }
 
-// MakeMap assigns a map function to pointerToFunction.
+// MakeMap creates a map function from a pointer to function with the following signatures :
+// map(collection []A, mapper func(A)B )[]B
+// map(collection []A, mapper func(A,int)B )[]B
+// map(collection []A, mapper func(A,int,[]A)B )[]B
+// or return an error if types do not match
 //
 // Example:
 //		type Person struct { Name string }
@@ -221,6 +228,9 @@ func MakeMap(pointerToFunction interface{}) error {
 
 }
 
+// MakeIndexOf creates an indexOf function from a pointer to function using the following signature :
+// indexOf([]T,T)int
+// or returns an error if types do not match
 func MakeIndexOf(pointerToFunction interface{}) error {
 	Value := reflect.ValueOf(pointerToFunction)
 	// expect a pointer
@@ -272,6 +282,67 @@ func MakeIndexOf(pointerToFunction interface{}) error {
 			}
 		}
 		results = []reflect.Value{reflect.ValueOf(-1)}
+		return
+	})
+	Value.Elem().Set(Result)
+	return nil
+}
+
+// MakeInclude creates an include function from a pointer to function using the following signature :
+// indexOf([]T,T)bool
+// or returns an error if types do not match
+// include returns true if element T exists in collection []T ,else returns false
+func MakeInclude(pointerToFunction interface{}) error {
+	Value := reflect.ValueOf(pointerToFunction)
+	// expect a pointer
+	if Value.Kind() != reflect.Ptr {
+		return ErrNotAPointer
+	}
+
+	// expect the pointer to be a function
+	if Value.Elem().Kind() != reflect.Func {
+		return ErrNotAFunction
+	}
+	FuncValue := Value.Elem()
+	FuncType := FuncValue.Type()
+	// expect the function to have 2 arguments
+	if FuncType.NumIn() != 2 {
+		return ErrInvalidNumberOfInputValues
+	}
+	// expect the function to have 1 return value
+	if FuncType.NumOut() != 1 {
+		return ErrInvalidNumberOfReturnValues
+	}
+	// expect the return value to be an boolean
+	if FuncType.Out(0) != reflect.TypeOf(bool(true)) {
+		return ErrUnexpectedType
+	}
+	FirstArgumentType := FuncType.In(0)
+
+	// expect the first argument to be an array
+	if kind := FirstArgumentType.Kind(); kind != reflect.Array && kind != reflect.Slice {
+		return ErrUnexpectedType
+	}
+	FirstArgumentElementType := FirstArgumentType.Elem()
+	if !FirstArgumentElementType.Comparable() {
+		return ErrNoComparableType
+	}
+	SecondArgumentType := FuncType.In(1)
+	// expect the element of the array of the first argument and the second argument to
+	// have matching types
+	if SecondArgumentType != FirstArgumentElementType {
+		return ErrUnexpectedType
+	}
+	Result := reflect.MakeFunc(FuncType, func(args []reflect.Value) (results []reflect.Value) {
+		ArrayValue := args[0]
+		NeedleValue := args[1]
+		for i := 0; i < ArrayValue.Len(); i++ {
+			if ArrayValue.Index(i).Interface() == NeedleValue.Interface() {
+				results = []reflect.Value{reflect.ValueOf(true)}
+				return
+			}
+		}
+		results = []reflect.Value{reflect.ValueOf(false)}
 		return
 	})
 	Value.Elem().Set(Result)

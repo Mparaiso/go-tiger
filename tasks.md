@@ -1,0 +1,11 @@
+- [ ] add branch mongo : complete DocumentManager.resolveAllRelations
+- [ ] add funcs.MakeEvery
+- [ ] add funcs.MakeSome
+- [ ] add funcs.MakeFilter
+- [ ] add funcs.MakeLastIndexOf
+- [ ] add funcs.MakeFind
+- [ ] add funcs.MakeFindIndex
+- [ ] add funcs.MakeReverse
+- [ ] add funcs.MakeSort
+- [ ] add funcs.MakeForEach
+- [x] add funcs.MakeInclude

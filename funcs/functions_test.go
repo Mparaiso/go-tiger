@@ -112,3 +112,17 @@ func ExampleMakeIndexOf() {
 	// 1
 	// -1
 }
+
+func ExampleMakeInclude() {
+	// Let's create an include function
+	var StringsInclude func([]string, string) bool
+	fmt.Println(funcs.MakeInclude(&StringsInclude))
+
+	fmt.Println(StringsInclude([]string{"a", "b", "d", "e"}, "e"))
+	fmt.Println(StringsInclude([]string{"e", "k", "f"}, "g"))
+
+	// Output:
+	// <nil>
+	// true
+	// false
+}
