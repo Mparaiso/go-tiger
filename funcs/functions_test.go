@@ -77,7 +77,17 @@ func TestErrInvalidNumberOfInputValues(t *testing.T) {
 	err := funcs.MakeReduce(&reduce)
 	test.Fatal(t, err, funcs.ErrInvalidNumberOfInputValues)
 }
-
+func ExammpleMakeFlatten() {
+	var flatten func([][]string) []string
+	if err := funcs.MakeFlatten(&flatten); err != nil {
+		log.Fatal(err)
+	}
+	stringsOfString := [][]string{{"a", "b"}, {"c", "d"}, {"e"}}
+	strings := flatten(stringsOfString)
+	fmt.Println(strings)
+	// Output:
+	// [a b c d e]
+}
 func ExampleMakeGetKeys() {
 	// let's extract the keys of a map
 	var getKeys func(map[string]int) []string
@@ -366,4 +376,19 @@ func ExampleMakeFind() {
 	// 2
 	// { 0}
 	// -1
+}
+
+func ExampleMakeMapToArray() {
+	// Let's transform a map into an array
+	var mapToArrayOfStrings func(map[int]string, func(string) string) []string
+	if err := funcs.MakeMapToArray(&mapToArrayOfStrings); err != nil {
+		log.Fatal(err)
+	}
+	Map := map[int]string{1: "foo", 2: "bar", 3: "baz"}
+	Array := mapToArrayOfStrings(Map, func(s string) string {
+		return s
+	})
+	fmt.Println(len(Array))
+	// Output:
+	// 3
 }

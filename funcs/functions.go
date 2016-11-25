@@ -1052,3 +1052,79 @@ func MakeInclude(pointerToFunction interface{}) error {
 	Value.Elem().Set(Result)
 	return nil
 }
+
+// MakeMapToArray assigns a mapToArray function with the following signature :
+//
+//		mapToArray(Map map[K]V, mapper func(V)T)[]T
+//		mapToArray(Map map[K]V, mapper func(V,K)T)[]T
+//		mapToArray(Map map[K]V, mapper func(V,K,map[K]V)T)[]T
+//
+// or returns an error if types do not match.
+//
+// mapToArray applies mapper to each value of a map and returns an array of the return values of the mapper.
+func MakeMapToArray(pointerToFunction interface{}) error {
+	Value := reflect.ValueOf(pointerToFunction)
+	if Value.Kind() != reflect.Ptr {
+		return ErrNotAPointer
+	}
+	FuncValue := Value.Elem()
+	if FuncValue.Kind() != reflect.Func {
+		return ErrNotAFunction
+	}
+	FuncType := FuncValue.Type()
+	mapToArray := reflect.MakeFunc(FuncType, func(args []reflect.Value) (results []reflect.Value) {
+		Map := args[0]
+		mapper := args[1]
+		mapperInLength := mapper.Type().NumIn()
+		returnCollection := reflect.MakeSlice(reflect.SliceOf(mapper.Type().Out(0)), 0, 0)
+		for _, key := range Map.MapKeys() {
+			var returnValues []reflect.Value
+			switch mapperInLength {
+			case 1:
+				returnValues = mapper.Call([]reflect.Value{Map.MapIndex(key)})
+			case 2:
+				returnValues = mapper.Call([]reflect.Value{Map.MapIndex(key), key})
+			case 3:
+				returnValues = mapper.Call([]reflect.Value{Map.MapIndex(key), key, Map})
+			}
+			returnCollection = reflect.Append(returnCollection, returnValues[0])
+		}
+		results = []reflect.Value{returnCollection}
+		return
+	})
+	Value.Elem().Set(mapToArray)
+	return nil
+}
+
+// MakeFlatten assigns a flatten function to pointerToFunction with the following signature :
+//
+// 		flaten([][]T)[]T
+//
+// or return an error if types do not match.
+// flatten flattens an array or arrays into an array
+func MakeFlatten(pointerToFunction interface{}) error {
+	Value := reflect.ValueOf(pointerToFunction)
+	if Value.Kind() != reflect.Ptr {
+		return ErrNotAPointer
+	}
+	FuncValue := Value.Elem()
+	if FuncValue.Kind() != reflect.Func {
+		return ErrNotAFunction
+	}
+	FuncType := FuncValue.Type()
+	flatten := reflect.MakeFunc(FuncType, func(args []reflect.Value) (results []reflect.Value) {
+		collectionOfCollection := args[0]
+		collection := collectionOfCollection.Elem()
+		returnCollection := reflect.MakeSlice(collection.Elem().Type(), 0, 0)
+		for i := 0; i < collectionOfCollection.Len(); i++ {
+			collection := collectionOfCollection.Index(i)
+			for j := 0; j < collection.Len(); j++ {
+				returnCollection = reflect.Append(returnCollection, collection.Index(j))
+			}
+		}
+		results = []reflect.Value{returnCollection}
+		return
+	})
+	Value.Elem().Set(flatten)
+	return nil
+}
