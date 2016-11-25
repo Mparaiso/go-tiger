@@ -77,7 +77,26 @@ func TestErrInvalidNumberOfInputValues(t *testing.T) {
 	err := funcs.MakeReduce(&reduce)
 	test.Fatal(t, err, funcs.ErrInvalidNumberOfInputValues)
 }
-
+func ExampleKeyBy() {
+	type Order struct {
+		ID       int
+		Shipping string
+		Total    int
+	}
+	var keyOrdersById func([]Order, func(Order) int) map[int]Order
+	if err := funcs.MakeKeyBy(&keyOrdersById); err != nil {
+		log.Fatal(err)
+	}
+	orders := []Order{{1, "USA", 100}, {20, "Japan", 1000}, {60, "Spain", 250}}
+	ordersById := keyOrdersById(orders, func(order Order) int {
+		return order.ID
+	})
+	fmt.Println(ordersById[1])
+	fmt.Println(ordersById[60])
+	// Output:
+	// {1 USA 100}
+	// {60 Spain 250}
+}
 func ExampleMakeGroupBy() {
 	// let's group people by sex
 	type Sex int
@@ -124,14 +143,16 @@ func ExampleMakeReduce() {
 	// [Frank John Jane]
 }
 func ExampleMakeReduce_Second() {
-	// The reducer can take up to 4 arguments.
-	var reduceStringsToString func(strings []string, reducer func(result string, element string, index int, strings []string) string, initial string) string
-	fmt.Println(funcs.MakeReduce(&reduceStringsToString))
-	fmt.Println(reduceStringsToString([]string{"foo", "bar"}, func(result, element string, index int, strings []string) string {
+	// Let's make a reduce function
+	var reduce func([]string, func(result string, s string, i int) string, string) string
+	if err := funcs.MakeReduce(&reduce); err != nil {
+		log.Fatal(err)
+	}
+	strings := []string{"foo", "bar"}
+	fmt.Println(reduce(strings, func(result, element string, index int) string {
 		return result + fmt.Sprint(index) + element
 	}, ""))
 	// Output:
-	// <nil>
 	// 0foo1bar
 }
 

@@ -13,6 +13,11 @@
 //    limitations under the License.
 
 // Package funcs provides utilities to enable functional programming with Go.
+// The main goal here is to provide type safety at runtime while being able to
+// use generic algorithms and patterns. Performance, while important, is not a priority.
+// Code reuse is. A reduce function shouldn't be written for every possible type combination,
+// that's why a function is generated, at runtime, with the proper type signature so its use
+// is completely type safe.
 package funcs
 
 import (
@@ -214,6 +219,89 @@ func MakeGroupBy(pointerToFunction interface{}) error {
 		return
 	})
 	Value.Elem().Set(groupByFunc)
+	return nil
+}
+
+// MakeKeyBy creates a  keyBy function from a pointer function with the following possible signatures :
+//
+//		keyBy(collection []A, selector func(element A)B)map[B]A
+//		keyBy(collection []A, selector func(element A,index int)B)map[B]A
+//		keyBy(collection []A, selector func(element A,index int,collection []A)B)map[B]A
+//
+// or returns an error if types do not match.
+//
+// keyBy returns a map so that elements from collection are keyed by the return value of
+// the selector function.
+func MakeKeyBy(pointerToFunction interface{}) error {
+	Value := reflect.ValueOf(pointerToFunction)
+	if Value.Kind() != reflect.Ptr {
+		return ErrNotAPointer
+	}
+	FuncValue := Value.Elem()
+	if FuncValue.Kind() != reflect.Func {
+		return ErrNotAFunction
+	}
+	FuncType := FuncValue.Type()
+	if FuncType.NumIn() != 2 {
+		return ErrInvalidNumberOfInputValues
+	}
+	if FuncType.NumOut() != 1 {
+		return ErrInvalidNumberOfReturnValues
+	}
+	CollectionType := FuncType.In(0)
+	SelectorType := FuncType.In(1)
+	if kind := CollectionType.Kind(); kind != reflect.Array && kind != reflect.Slice {
+		return ErrUnexpectedType
+	}
+	if SelectorType.Kind() != reflect.Func {
+		return ErrUnexpectedType
+	}
+	if SelectorType.NumIn() < 1 {
+		return ErrInvalidNumberOfInputValues
+	}
+	if SelectorType.NumOut() > 3 {
+		return ErrInvalidNumberOfReturnValues
+	}
+	CollectionElemType := CollectionType.Elem()
+	if SelectorType.In(0) != CollectionElemType {
+		return ErrUnexpectedType
+	}
+	if SelectorType.NumIn() > 1 && SelectorType.In(1) != reflect.TypeOf(1) {
+		return ErrUnexpectedType
+	}
+	if SelectorType.NumIn() > 2 && SelectorType.In(2) != CollectionType {
+		return ErrUnexpectedType
+	}
+	if FuncType.Out(0).Kind() != reflect.Map {
+		return ErrUnexpectedType
+	}
+	if FuncType.Out(0).Key() != SelectorType.Out(0) {
+		return ErrUnexpectedType
+	}
+	if FuncType.Out(0).Elem() != CollectionElemType {
+		return ErrUnexpectedType
+	}
+	keyByFunc := reflect.MakeFunc(FuncType, func(args []reflect.Value) (results []reflect.Value) {
+		collection := args[0]
+		selector := args[1]
+		Map := reflect.MakeMap(reflect.MapOf(selector.Type().Out(0), collection.Type().Elem()))
+		results = []reflect.Value{Map}
+		numIn := selector.Type().NumIn()
+		for i := 0; i < collection.Len(); i++ {
+			var keys []reflect.Value
+			switch numIn {
+			case 1:
+				keys = selector.Call([]reflect.Value{collection.Index(i)})
+			case 2:
+				keys = selector.Call([]reflect.Value{collection.Index(i), reflect.ValueOf(i)})
+			case 3:
+				keys = selector.Call([]reflect.Value{collection.Index(i), reflect.ValueOf(i), collection})
+			}
+			Map.SetMapIndex(keys[0], collection.Index(i))
+		}
+		return
+	})
+	Value.Elem().Set(keyByFunc)
 	return nil
 }
 

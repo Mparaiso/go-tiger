@@ -11,8 +11,7 @@
 - [ ] add funcs.MakeDifference
 - [ ] add funcs.MakeUnion
 - [ ] add funcs.MakeXor
-- [ ] add funcs.MakeGroupBy `func(collection []T,grouper func(element T,index int,collection T[])U)map[U][]T`
-      see https://lodash.com/docs/4.17.2#groupBy for details
+- [x] add funcs.MakeGroupBy https://lodash.com/docs/4.17.2#groupBy 
 - [ ] add funcs.MakePartition https://lodash.com/docs/4.17.2#partition
 - [ ] add funcs.MakeShuffle
-- [ ] add funcs.KeyBy https://lodash.com/docs/4.17.2#keyBy `func(collection []T,keyProvider func(element T)K)map[K]T`
+- [x] add funcs.KeyBy https://lodash.com/docs/4.17.2#keyBy `func(collection []T,keyProvider func(element T)K)map[K]T`
