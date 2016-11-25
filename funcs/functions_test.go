@@ -77,7 +77,7 @@ func TestErrInvalidNumberOfInputValues(t *testing.T) {
 	err := funcs.MakeReduce(&reduce)
 	test.Fatal(t, err, funcs.ErrInvalidNumberOfInputValues)
 }
-func ExammpleMakeFlatten() {
+func ExampleMakeFlatten() {
 	var flatten func([][]string) []string
 	if err := funcs.MakeFlatten(&flatten); err != nil {
 		log.Fatal(err)
