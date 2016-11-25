@@ -1,7 +1,22 @@
+//    Copyright (C) 2016  mparaiso <mparaiso@online.fr>
+//
+//    Licensed under the Apache License, Version 2.0 (the "License");
+//    you may not use this file except in compliance with the License.
+//    You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+//    Unless required by applicable law or agreed to in writing, software
+//    distributed under the License is distributed on an "AS IS" BASIS,
+//    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//    See the License for the specific language governing permissions and
+//    limitations under the License.
+
 package funcs_test
 
 import (
 	"fmt"
+	"log"
 	"testing"
 
 	"github.com/Mparaiso/go-tiger/funcs"
@@ -111,6 +126,65 @@ func ExampleMakeIndexOf() {
 	// <nil>
 	// 1
 	// -1
+}
+
+func ExampleMakeSome() {
+	var someStrings func(collection []string, predicate func(s string) bool) bool
+	if err := funcs.MakeSome(&someStrings); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(someStrings([]string{"foo", "bar", "baz"}, func(s string) bool {
+		return s[0] == 'f'
+	}))
+	fmt.Println(someStrings([]string{"foo", "bar", "baz"}, func(s string) bool {
+		return s[0] == 'a'
+	}))
+
+	// Output:
+	// true
+	// false
+}
+
+func ExampleMakeEvery() {
+	var everyInts func(collection []int, predicate func(i int) bool) bool
+
+	if err := funcs.MakeEvery(&everyInts); err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println(everyInts([]int{1, 2, 3}, func(element int) bool {
+		return element%2 == 0
+	}))
+
+	fmt.Println(everyInts([]int{1, 3, 5}, func(element int) bool {
+		return element%2 != 0
+	}))
+
+	// Output:
+	// false
+	// true
+
+}
+
+func ExampleMakeFilter() {
+	type Person struct {
+		Age  int
+		Name string
+	}
+	var filterAdults func(persons []Person, predicate func(person Person, i int) bool) []Person
+	fmt.Println(funcs.MakeFilter(&filterAdults))
+	// TODO: handle error
+	people := []Person{{18, "Joe"}, {26, "David"}, {15, "Anna"}}
+	adults := filterAdults(people, func(person Person, index int) bool {
+		return person.Age >= 18
+	})
+	fmt.Println(len(adults))
+	fmt.Println(adults[0].Age, adults[0].Name)
+
+	// Output:
+	// <nil>
+	// 2
+	// 18 Joe
 }
 
 func ExampleMakeInclude() {
