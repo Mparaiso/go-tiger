@@ -152,15 +152,15 @@ func MakeReduce(pointerToFunction interface{}) error {
 //		map(collection []A, mapper func(A,int)B )[]B
 //		map(collection []A, mapper func(A,int,[]A)B )[]B
 //
-// or return an error if types do not match
+// or return an error if types do not match.
 //
 // Example:
 //
 //		type Person struct { Name string }
 //		var mapPersonsToStrings func(persons []Person,mapper func(person Person)string)[]string
-//      err := funcs.MakeMapper(&mapPersonsToStrings)
+//		err := funcs.MakeMapper(&mapPersonsToStrings)
 //		// TODO: handle error
-//      fmt.Print(mapPersonsToStrings([]Person{"Joe","David"},func(person Person)string{
+//		fmt.Print(mapPersonsToStrings([]Person{"Joe","David"},func(person Person)string{
 //			return person.Name
 //		}))
 //		// Output:
