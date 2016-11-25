@@ -28,6 +28,8 @@ import (
 var (
 	// ErrNotAPointer : Error the value is not a pointer
 	ErrNotAPointer = errors.New("ErrNotAPointer : Error the value is not a pointer")
+	// ErrNotAMap : Error the value is not a map
+	ErrNotAMap = errors.New("ErrNotAMap : Error the value is not a map")
 	// ErrNotAFunction : the value is not a function
 	ErrNotAFunction = errors.New("ErrNotAFunction : the value is not a function")
 	// ErrNotEnoughArguments : Error the signature of the function doesn't have enough arguments to be set
@@ -219,6 +221,104 @@ func MakeGroupBy(pointerToFunction interface{}) error {
 		return
 	})
 	Value.Elem().Set(groupByFunc)
+	return nil
+}
+
+// MakeGetValues assigns a function to pointerToFunction with the following signature :
+//
+//		getValues(map[K]V)[]V
+//
+// or returns an error if types do not match. getValues extract the values of a map into an array
+func MakeGetValues(pointerToFunction interface{}) error {
+	Value := reflect.ValueOf(pointerToFunction)
+	if Value.Kind() != reflect.Ptr {
+		return ErrNotAPointer
+	}
+	FuncValue := Value.Elem()
+	if FuncValue.Kind() != reflect.Func {
+		return ErrNotAFunction
+	}
+	FuncType := FuncValue.Type()
+	if FuncType.NumIn() != 1 {
+		return ErrInvalidNumberOfInputValues
+	}
+	if FuncType.In(0).Kind() != reflect.Map {
+		return ErrNotAMap
+	}
+	if FuncType.NumOut() != 1 {
+		return ErrInvalidNumberOfReturnValues
+	}
+	MapType := FuncType.In(0)
+
+	if FuncType.Out(0).Kind() != reflect.Slice && FuncType.Out(0).Kind() != reflect.Array {
+		return ErrUnexpectedType
+	}
+
+	if FuncType.Out(0).Elem() != MapType.Elem() {
+		return ErrUnexpectedType
+	}
+	getValues := reflect.MakeFunc(FuncType, func(args []reflect.Value) (results []reflect.Value) {
+		Map := args[0]
+		Out := reflect.MakeSlice(reflect.SliceOf(Map.Type().Elem()), 0, 0)
+		for _, key := range Map.MapKeys() {
+			Out = reflect.Append(Out, Map.MapIndex(key))
+		}
+		results = append(results, Out)
+		return
+	})
+	Value.Elem().Set(getValues)
+	return nil
+}
+
+// MakeGetKeys assigns a getKey to the pointerToFunction with the following signature :
+//
+//		getKeys(map[K]V)[]K
+//
+// or returns an error if types do not match. getKeys extract the keys of a map into an array
+func MakeGetKeys(pointerToFunction interface{}) error {
+	Value := reflect.ValueOf(pointerToFunction)
+	if Value.Kind() != reflect.Ptr {
+		return ErrNotAPointer
+	}
+
+	FuncValue := Value.Elem()
+
+	if FuncValue.Kind() != reflect.Func {
+		return ErrNotAMap
+	}
+	FuncType := FuncValue.Type()
+
+	if FuncType.NumIn() != 1 {
+		return ErrInvalidNumberOfInputValues
+	}
+
+	if FuncType.In(0).Kind() != reflect.Map {
+		return ErrNotAMap
+	}
+
+	if FuncType.NumOut() != 1 {
+		return ErrInvalidNumberOfReturnValues
+	}
+
+	if FuncType.Out(0).Kind() != reflect.Slice && FuncType.Out(0).Kind() != reflect.Array {
+		return ErrUnexpectedType
+	}
+
+	MapType := FuncType.In(0)
+
+	if FuncType.Out(0).Elem() != MapType.Key() {
+		return ErrUnexpectedType
+	}
+	getKeys := reflect.MakeFunc(FuncType, func(args []reflect.Value) (results []reflect.Value) {
+		Map := args[0]
+		Out := reflect.MakeSlice(reflect.SliceOf(Map.Type().Key()), 0, 0)
+		for _, key := range Map.MapKeys() {
+			Out = reflect.Append(Out, key)
+		}
+		results = append(results, Out)
+		return
+	})
+	Value.Elem().Set(getKeys)
 	return nil
 }
 

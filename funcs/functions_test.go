@@ -77,6 +77,33 @@ func TestErrInvalidNumberOfInputValues(t *testing.T) {
 	err := funcs.MakeReduce(&reduce)
 	test.Fatal(t, err, funcs.ErrInvalidNumberOfInputValues)
 }
+
+func ExampleMakeGetKeys() {
+	// let's extract the keys of a map
+	var getKeys func(map[string]int) []string
+	if err := funcs.MakeGetKeys(&getKeys); err != nil {
+		log.Fatal(err)
+	}
+	Map := map[string]int{"a": 1, "b": 2, "c": 3, "d": 4}
+	keys := getKeys(Map)
+	fmt.Println(len(keys))
+	// Output:
+	// 4
+}
+
+func ExampleMakeGetValues() {
+	// let's extract the values of a map
+	var getValues func(map[string]int) []int
+	if err := funcs.MakeGetValues(&getValues); err != nil {
+		log.Fatal(err)
+	}
+	Map := map[string]int{"a": 1, "b": 2, "c": 3, "d": 4}
+	values := getValues(Map)
+	fmt.Println(len(values))
+	// Output:
+	// 4
+}
+
 func ExampleKeyBy() {
 	type Order struct {
 		ID       int

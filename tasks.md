@@ -15,3 +15,5 @@
 - [ ] add funcs.MakePartition https://lodash.com/docs/4.17.2#partition
 - [ ] add funcs.MakeShuffle
 - [x] add funcs.KeyBy https://lodash.com/docs/4.17.2#keyBy `func(collection []T,keyProvider func(element T)K)map[K]T`
+- [x] add funcs.GetKeys
+- [x] add funcs.getValues
