@@ -82,3 +82,33 @@ func ExampleMakeMap_Second() {
 	// <nil>
 	// [#0 John Doe #1 Jane Doe]
 }
+
+func TestMakeIndexOfErrors(t *testing.T) {
+	var IndexOfInts func([]int, int) int
+	err := funcs.MakeIndexOf(IndexOfInts)
+	test.Fatal(t, err, funcs.ErrNotAPointer)
+	err = funcs.MakeIndexOf(&struct{}{})
+	test.Fatal(t, err, funcs.ErrNotAFunction)
+	var IndexOfString func([]string, int) int
+	err = funcs.MakeIndexOf(&IndexOfString)
+	test.Fatal(t, err, funcs.ErrUnexpectedType)
+	var IndexOfByte func([]byte, byte) string
+	err = funcs.MakeIndexOf(&IndexOfByte)
+	test.Fatal(t, err, funcs.ErrUnexpectedType)
+	var IndexOfArray func([][]string, []string) int
+	err = funcs.MakeIndexOf(&IndexOfArray)
+	test.Fatal(t, err, funcs.ErrNoComparableType)
+}
+
+func ExampleMakeIndexOf() {
+	// Let's make an indexOf function
+	var IndexOfInts func([]int, int) int
+	fmt.Println(funcs.MakeIndexOf(&IndexOfInts))
+	fmt.Println(IndexOfInts([]int{1, 2, 4}, 2))
+	fmt.Println(IndexOfInts([]int{2, 6, 8}, 1))
+
+	// Output:
+	// <nil>
+	// 1
+	// -1
+}

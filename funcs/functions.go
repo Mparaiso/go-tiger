@@ -16,6 +16,7 @@ var (
 	ErrInvalidNumberOfReturnValues = fmt.Errorf("funcs: Error the number of return values in the function is not valid")
 	ErrInvalidNumberOfInputValues  = fmt.Errorf("funcs: Error the number of arguments in the function is not valid")
 	ErrUnexpectedType              = fmt.Errorf("funcs: Error a type was expected and a different type was found")
+	ErrNoComparableType            = fmt.Errorf("funcs: Error a type was expected to be comparable")
 )
 
 // Must panics on error
@@ -218,4 +219,61 @@ func MakeMap(pointerToFunction interface{}) error {
 	Value.Elem().Set(mapFunction)
 	return nil
 
+}
+
+func MakeIndexOf(pointerToFunction interface{}) error {
+	Value := reflect.ValueOf(pointerToFunction)
+	// expect a pointer
+	if Value.Kind() != reflect.Ptr {
+		return ErrNotAPointer
+	}
+
+	// expect the pointer to be a function
+	if Value.Elem().Kind() != reflect.Func {
+		return ErrNotAFunction
+	}
+	FuncValue := Value.Elem()
+	FuncType := FuncValue.Type()
+	// expect the function to have 2 arguments
+	if FuncType.NumIn() != 2 {
+		return ErrInvalidNumberOfInputValues
+	}
+	// expect the function to have 1 return value
+	if FuncType.NumOut() != 1 {
+		return ErrInvalidNumberOfReturnValues
+	}
+	// expect the return value to be an integer
+	if FuncType.Out(0) != reflect.TypeOf(int(0)) {
+		return ErrUnexpectedType
+	}
+	FirstArgumentType := FuncType.In(0)
+
+	// expect the first argument to be an array
+	if kind := FirstArgumentType.Kind(); kind != reflect.Array && kind != reflect.Slice {
+		return ErrUnexpectedType
+	}
+	FirstArgumentElementType := FirstArgumentType.Elem()
+	if !FirstArgumentElementType.Comparable() {
+		return ErrNoComparableType
+	}
+	SecondArgumentType := FuncType.In(1)
+	// expect the element of the array of the first argument and the second argument to
+	// have matching types
+	if SecondArgumentType != FirstArgumentElementType {
+		return ErrUnexpectedType
+	}
+	Result := reflect.MakeFunc(FuncType, func(args []reflect.Value) (results []reflect.Value) {
+		ArrayValue := args[0]
+		NeedleValue := args[1]
+		for i := 0; i < ArrayValue.Len(); i++ {
+			if ArrayValue.Index(i).Interface() == NeedleValue.Interface() {
+				results = []reflect.Value{reflect.ValueOf(i)}
+				return
+			}
+		}
+		results = []reflect.Value{reflect.ValueOf(-1)}
+		return
+	})
+	Value.Elem().Set(Result)
+	return nil
 }
