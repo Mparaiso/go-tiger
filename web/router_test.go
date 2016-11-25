@@ -11,14 +11,14 @@
 //    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 //    See the License for the specific language governing permissions and
 //    limitations under the License.
-package tiger_test
+package web_test
 
 import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 
-	app "github.com/Mparaiso/go-tiger"
+	app "github.com/Mparaiso/go-tiger/web"
 )
 
 func ExampleRouter() {

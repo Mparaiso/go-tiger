@@ -1,0 +1,17 @@
+- [ ] add branch mongo : complete DocumentManager.resolveAllRelations
+- [x] add funcs.MakeEvery
+- [x] add funcs.MakeSome
+- [x] add funcs.MakeFilter
+- [ ] add funcs.MakeLastIndexOf
+- [x] add funcs.MakeFind
+- [ ] add funcs.MakeReverse
+- [ ] add funcs.MakeSort
+- [x] add funcs.MakeForEach
+- [x] add funcs.MakeInclude
+- [ ] add funcs.MakeDifference
+- [ ] add funcs.MakeUnion
+- [ ] add funcs.MakeXor
+- [x] add funcs.MakeGroupBy https://lodash.com/docs/4.17.2#groupBy 
+- [ ] add funcs.MakePartition https://lodash.com/docs/4.17.2#partition
+- [ ] add funcs.MakeShuffle
+- [x] add funcs.KeyBy https://lodash.com/docs/4.17.2#keyBy `func(collection []T,keyProvider func(element T)K)map[K]T`
