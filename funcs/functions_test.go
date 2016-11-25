@@ -69,6 +69,44 @@ func ExampleMakeReduce_Second() {
 	// 0foo1bar
 }
 
+func BenchmarkMap_ForLoop(b *testing.B) {
+	type Person struct {
+		Name string
+		Age  int
+	}
+	var (
+		persons = []Person{{"Joe", 18}, {"Kim", 29}, {"Jane", 38}, {"Jack", 24}, {"David", 79}}
+	)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		names := []string{}
+		for j := 0; j < len(persons); j++ {
+			names = append(names, persons[j].Name)
+		}
+
+	}
+}
+
+func BenchmarkMap_MakeMap(b *testing.B) {
+	type Person struct {
+		Name string
+		Age  int
+	}
+	var (
+		mapPersonsToNames func(persons []Person, mapper func(person Person) string) []string
+		persons           = []Person{{"Joe", 18}, {"Kim", 29}, {"Jane", 38}, {"Jack", 24}, {"David", 79}}
+	)
+	if err := funcs.MakeMap(&mapPersonsToNames); err != nil {
+		b.Fatal(err)
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = mapPersonsToNames(persons, func(person Person) string {
+			return person.Name
+		})
+	}
+}
+
 func ExampleMakeMap() {
 	// Let's map book titles
 	type Book struct {
