@@ -28,7 +28,7 @@ func ExampleErrorWrapper() {
 	wrappedError := errors.Wrap(err, "Wrapped Error")
 	fmt.Println(strings.Contains(wrappedError.Error(), "Wrapped Error"))  // contains the wrapper message
 	fmt.Println(strings.Contains(wrappedError.Error(), "Original Error")) // contains the original message
-	fmt.Println(strings.Contains(wrappedError.Error(), "26"))             // contains line
+	fmt.Println(strings.Contains(wrappedError.Error(), "28"))             // contains line
 	fmt.Println(strings.Contains(wrappedError.Error(), "errors_test.go")) // contains file name
 	fmt.Println(wrappedError.Original().Error())
 	// Output:

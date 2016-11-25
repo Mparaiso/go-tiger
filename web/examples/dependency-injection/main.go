@@ -22,8 +22,8 @@ import (
 
 	"net/url"
 
-	tiger "github.com/Mparaiso/go-tiger"
 	"github.com/Mparaiso/go-tiger/logger"
+	tiger "github.com/Mparaiso/go-tiger/web"
 )
 
 func main() {

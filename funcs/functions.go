@@ -123,6 +123,100 @@ func MakeForEach(pointerToFunction interface{}) error {
 
 }
 
+// MakeGroupBy creates a  groupBy function froma a pointer function with the following signatures :
+//
+//		groupBy(collection []A, selector func(element A)(key B))map[B][]A
+//		groupBy(collection []A, selector func(element A,index int)(key B))map[B][]A
+//		groupBy(collection []A, selector func(element A,index int,collection []A)(key B))map[B][]A
+//
+// or returns an error if types do not match.
+//
+// groupBy returns a map of slices so that every element from collection is grouped
+// by the result of the selector function, which serves as the key for the map.
+func MakeGroupBy(pointerToFunction interface{}) error {
+	Value := reflect.ValueOf(pointerToFunction)
+	if Value.Kind() != reflect.Ptr {
+		return ErrNotAPointer
+	}
+	FuncValue := Value.Elem()
+	if FuncValue.Kind() != reflect.Func {
+		return ErrNotAFunction
+	}
+	FuncType := FuncValue.Type()
+	if FuncType.NumIn() != 2 {
+		return ErrInvalidNumberOfInputValues
+	}
+	if FuncType.NumOut() != 1 {
+		return ErrInvalidNumberOfReturnValues
+	}
+	CollectionType := FuncType.In(0)
+	SelectorType := FuncType.In(1)
+	if kind := CollectionType.Kind(); kind != reflect.Array && kind != reflect.Slice {
+		return ErrUnexpectedType
+	}
+	if SelectorType.Kind() != reflect.Func {
+		return ErrUnexpectedType
+	}
+	if SelectorType.NumIn() < 1 {
+		return ErrInvalidNumberOfInputValues
+	}
+	if SelectorType.NumOut() > 3 {
+		return ErrInvalidNumberOfReturnValues
+	}
+	CollectionElemType := CollectionType.Elem()
+	if SelectorType.In(0) != CollectionElemType {
+		return ErrUnexpectedType
+	}
+	if SelectorType.NumIn() > 1 && SelectorType.In(1) != reflect.TypeOf(1) {
+		return ErrUnexpectedType
+	}
+	if SelectorType.NumIn() > 2 && SelectorType.In(2) != CollectionType {
+		return ErrUnexpectedType
+	}
+	if FuncType.Out(0).Kind() != reflect.Map {
+		return ErrUnexpectedType
+	}
+	if FuncType.Out(0).Key() != SelectorType.Out(0) {
+		return ErrUnexpectedType
+	}
+	if FuncType.Out(0).Elem() != CollectionType {
+		return ErrUnexpectedType
+	}
+	groupByFunc := reflect.MakeFunc(FuncType, func(args []reflect.Value) (results []reflect.Value) {
+		collection := args[0]
+		collectionType := collection.Type()
+		selector := args[1]
+		Map := reflect.MakeMap(reflect.MapOf(selector.Type().Out(0), collection.Type()))
+		results = []reflect.Value{Map}
+		numIn := selector.Type().NumIn()
+		for i := 0; i < collection.Len(); i++ {
+			var keys []reflect.Value
+			switch numIn {
+			case 1:
+				keys = selector.Call([]reflect.Value{collection.Index(i)})
+			case 2:
+				keys = selector.Call([]reflect.Value{collection.Index(i), reflect.ValueOf(i)})
+			case 3:
+				keys = selector.Call([]reflect.Value{collection.Index(i), reflect.ValueOf(i), collection})
+			}
+			if len(Map.MapKeys()) == 0 || !func() bool {
+				for _, key := range Map.MapKeys() {
+					if keys[0].Interface() == key.Interface() {
+						return true
+					}
+				}
+				return false
+			}() {
+				Map.SetMapIndex(keys[0], reflect.New(collectionType).Elem())
+			}
+			Map.SetMapIndex(keys[0], reflect.Append(Map.MapIndex(keys[0]), collection.Index(i)))
+		}
+		return
+	})
+	Value.Elem().Set(groupByFunc)
+	return nil
+}
+
 // MakeReduce creates a reduce function from a pointer function with the following signatures :
 //
 // 		reduce(collection []A, reducer func(result B,element A)B , initial B )B

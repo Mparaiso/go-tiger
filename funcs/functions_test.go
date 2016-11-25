@@ -23,53 +23,7 @@ import (
 	"github.com/Mparaiso/go-tiger/test"
 )
 
-func TestErrNotApointer(t *testing.T) {
-	var reduce func([]int, func(int, int) int, int)
-	err := funcs.MakeReduce(reduce)
-	test.Fatal(t, err, funcs.ErrNotAPointer)
-}
-
-func TestErrNotAFunction(t *testing.T) {
-	var reduce interface{}
-	err := funcs.MakeReduce(&reduce)
-	test.Fatal(t, err, funcs.ErrNotAFunction)
-}
-
-func TestErrInvalidNumberOfInputValues(t *testing.T) {
-	var reduce func(collection []string, reducer func(result string, element string) string)
-	err := funcs.MakeReduce(&reduce)
-	test.Fatal(t, err, funcs.ErrInvalidNumberOfInputValues)
-}
-func ExmapleMakeReduce() {
-	// Let's use MakeReduce to create a map function.
-	type Person struct {
-		Name string
-		Age  int
-	}
-	var MapPersonsToNames func(persons []Person, reducer func(names []string, person Person) []string, initial []string) string
-	err := funcs.MakeReduce(&MapPersonsToNames)
-	fmt.Println(err)
-	result := MapPersonsToNames([]Person{{"Frank", 30}, {"John", 43}, {"Jane", 26}}, func(names []string, person Person) []string {
-		return append(names, person.Name)
-	}, []string{})
-	fmt.Println(result)
-	// Output:
-	// <nil>
-	// [Frank John Jane]
-}
-func ExampleMakeReduce_Second() {
-	// The reducer can take up to 4 arguments.
-	var reduceStringsToString func(strings []string, reducer func(result string, element string, index int, strings []string) string, initial string) string
-	fmt.Println(funcs.MakeReduce(&reduceStringsToString))
-	fmt.Println(reduceStringsToString([]string{"foo", "bar"}, func(result, element string, index int, strings []string) string {
-		return result + fmt.Sprint(index) + element
-	}, ""))
-	// Output:
-	// <nil>
-	// 0foo1bar
-}
-
-func BenchmarkMap_ForLoop(b *testing.B) {
+func BenchmarkMap_Without_Reflection(b *testing.B) {
 	type Person struct {
 		Name string
 		Age  int
@@ -105,6 +59,80 @@ func BenchmarkMap_MakeMap(b *testing.B) {
 			return person.Name
 		})
 	}
+}
+func TestErrNotApointer(t *testing.T) {
+	var reduce func([]int, func(int, int) int, int)
+	err := funcs.MakeReduce(reduce)
+	test.Fatal(t, err, funcs.ErrNotAPointer)
+}
+
+func TestErrNotAFunction(t *testing.T) {
+	var reduce interface{}
+	err := funcs.MakeReduce(&reduce)
+	test.Fatal(t, err, funcs.ErrNotAFunction)
+}
+
+func TestErrInvalidNumberOfInputValues(t *testing.T) {
+	var reduce func(collection []string, reducer func(result string, element string) string)
+	err := funcs.MakeReduce(&reduce)
+	test.Fatal(t, err, funcs.ErrInvalidNumberOfInputValues)
+}
+
+func ExampleMakeGroupBy() {
+	// let's group people by sex
+	type Sex int
+	const (
+		male Sex = iota
+		female
+	)
+	type Person struct {
+		Name string
+		Sex  Sex
+	}
+	var groupPeopleBySex func(people []Person, selector func(person Person) Sex) map[Sex][]Person
+	if err := funcs.MakeGroupBy(&groupPeopleBySex); err != nil {
+		log.Fatal(err)
+	}
+	people := []Person{{"Alex", female}, {"John", male}, {"David", male}, {"Doris", female}, {"Jack", male}}
+	peopleBySex := groupPeopleBySex(people, func(person Person) Sex {
+		return person.Sex
+	})
+	fmt.Println(len(peopleBySex))
+	fmt.Println(len(peopleBySex[male]))
+	fmt.Println(len(peopleBySex[female]))
+	// Output:
+	// 2
+	// 3
+	// 2
+}
+func ExampleMakeReduce() {
+	// Let's use MakeReduce to create a map function.
+	type Person struct {
+		Name string
+		Age  int
+	}
+	var MapPersonsToNames func(persons []Person, reducer func(names []string, person Person) []string, initial []string) []string
+	err := funcs.MakeReduce(&MapPersonsToNames)
+	if err != nil {
+		log.Fatal(err)
+	}
+	result := MapPersonsToNames([]Person{{"Frank", 30}, {"John", 43}, {"Jane", 26}}, func(names []string, person Person) []string {
+		return append(names, person.Name)
+	}, []string{})
+	fmt.Println(result)
+	// Output:
+	// [Frank John Jane]
+}
+func ExampleMakeReduce_Second() {
+	// The reducer can take up to 4 arguments.
+	var reduceStringsToString func(strings []string, reducer func(result string, element string, index int, strings []string) string, initial string) string
+	fmt.Println(funcs.MakeReduce(&reduceStringsToString))
+	fmt.Println(reduceStringsToString([]string{"foo", "bar"}, func(result, element string, index int, strings []string) string {
+		return result + fmt.Sprint(index) + element
+	}, ""))
+	// Output:
+	// <nil>
+	// 0foo1bar
 }
 
 func ExampleMakeMap() {

@@ -1,4 +1,4 @@
-package tiger
+package web
 
 import (
 	"net/http"
