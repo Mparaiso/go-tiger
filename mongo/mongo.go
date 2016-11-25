@@ -519,21 +519,23 @@ func (manager *defaultDocumentManager) resolveAllRelations(values interface{}) e
 	if err != nil {
 		return err
 	}
+
 	if meta.hasRelation() {
+		values := func() []reflect.Value {
+			res := []reflect.Value{}
+			for i := 0; i < Values.Len(); i++ {
+				res = append(res, Values.index(i))
+			}
+			return res
+		}()
+		valuesKeyedByObjectID := getValuesKeyedByObjectID(values, func(val Value) bson.ObjectId {
+			id, _ := meta.getIDForValue(val)
+			return id
+		})
+		objectIds := getObjectIds(valuesKeyedByObjectID)
 		for _, field := range meta.getFieldsWithRelation() {
 			switch field.relation.relation {
 			case referenceMany:
-				values := func() []reflect.Value {
-					res := []reflect.Value{}
-					for i := 0; i < Values.Len(); i++ {
-						res = append(res, Values.index(i))
-					}
-					return res
-				}()
-				valuesKeyedByObjectId := keyValuesByObjectId(values, func(val Value) bson.ObjectId {
-					id, _ := meta.getIDForValue(val)
-					return id
-				})
 				results := []map[string]interface{}{}
 				err := manager.GetDB().C(meta.collectionName).Find(bson.M{"_id": bson.M{"$in": objectIds}}).Select(bson.M{field.key: 1, "_id": 1}).All(&results)
 				if err != nil {
@@ -744,6 +746,8 @@ func metadataToString(meta metadata) string {
 }
 
 var (
-	keyValuesByObjectId func(collection []reflect.Value, selector func(reflect.Value) bson.ObjectId) map[bson.ObjectId]reflect.Value
-	_                   = funcs.Must(funcs.MakeKeyBy(&keyValuesByObjectId))
+	getValuesKeyedByObjectID func(collection []reflect.Value, selector func(reflect.Value) bson.ObjectId) map[bson.ObjectId]reflect.Value
+	_                        = funcs.Must(funcs.MakeKeyBy(&getValuesKeyedByObjectID))
+	getObjectIds             func(map[bson.ObjectId]reflect.Value) []bson.ObjectId
+	_                        = funcs.Must(funcs.MakeGetKeys(&getObjectIds))
 )
