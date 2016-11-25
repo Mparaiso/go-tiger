@@ -1114,8 +1114,7 @@ func MakeFlatten(pointerToFunction interface{}) error {
 	FuncType := FuncValue.Type()
 	flatten := reflect.MakeFunc(FuncType, func(args []reflect.Value) (results []reflect.Value) {
 		collectionOfCollection := args[0]
-		collection := collectionOfCollection.Elem()
-		returnCollection := reflect.MakeSlice(collection.Elem().Type(), 0, 0)
+		returnCollection := reflect.MakeSlice(collectionOfCollection.Type().Elem(), 0, 0)
 		for i := 0; i < collectionOfCollection.Len(); i++ {
 			collection := collectionOfCollection.Index(i)
 			for j := 0; j < collection.Len(); j++ {
