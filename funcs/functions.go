@@ -54,6 +54,75 @@ func Must(err error) error {
 	return err
 }
 
+// MakeForEach creates a forEach function from a pointer to function with the following signatures :
+//
+//		forEach(collection []A, callback func(A) )
+//		forEach(collection []A, callback func(A,int))
+//		forEach(collection []A, callback func(A,int,[]A))
+//
+// or return an error if types do not match.
+// forEach calls callback for every element of collection.
+func MakeForEach(pointerToFunction interface{}) error {
+	Value := reflect.ValueOf(pointerToFunction)
+	// expect a pointer
+	if Value.Kind() != reflect.Ptr {
+		return ErrNotAPointer
+	}
+	Function := Value.Elem()
+	// expect a pointer to function
+	if Function.Kind() != reflect.Func {
+		return ErrNotAFunction
+	}
+	FunctionType := Function.Type()
+	// expect a function with 2 arguments
+	if FunctionType.NumIn() != 2 {
+		return ErrInvalidNumberOfInputValues
+	}
+	// expect a function with a single return value
+	if FunctionType.NumOut() != 0 {
+		return ErrInvalidNumberOfReturnValues
+	}
+	CollectionType := FunctionType.In(0)
+	CallbackType := FunctionType.In(1)
+	if CallbackType.NumOut() != 0 {
+		return ErrInvalidNumberOfReturnValues
+	}
+	if numIn := CallbackType.NumIn(); numIn < 1 || numIn > 3 {
+		return ErrInvalidNumberOfInputValues
+	}
+	if CollectionType.Elem() != CallbackType.In(0) {
+		return ErrUnexpectedType
+	}
+	if CallbackType.NumIn() > 1 {
+		if CallbackType.In(1) != reflect.TypeOf(1) {
+			return ErrUnexpectedType
+		}
+	}
+	if CallbackType.NumIn() > 2 {
+		if CallbackType.In(2) != CollectionType {
+			return ErrUnexpectedType
+		}
+	}
+	forEachFunction := reflect.MakeFunc(FunctionType, func(args []reflect.Value) (results []reflect.Value) {
+		collection := args[0]
+		mapper := args[1]
+		for i := 0; i < collection.Len(); i++ {
+			switch mapper.Type().NumIn() {
+			case 1:
+				mapper.Call([]reflect.Value{collection.Index(i)})
+			case 2:
+				mapper.Call([]reflect.Value{collection.Index(i), reflect.ValueOf(i)})
+			case 3:
+				mapper.Call([]reflect.Value{collection.Index(i), reflect.ValueOf(i), collection})
+			}
+		}
+		return
+	})
+	Value.Elem().Set(forEachFunction)
+	return nil
+
+}
+
 // MakeReduce creates a reduce function from a pointer function with the following signatures :
 //
 // 		reduce(collection []A, reducer func(result B,element A)B , initial B )B
@@ -65,19 +134,6 @@ func Must(err error) error {
 // MakeReduce allow developers to quickly create reduce functions
 // without starting from scratch each time they need basic functional
 // programming capabilities. Result also allows type safety.
-//
-// Example:
-//
-//      var sumReduce func(ints []int{},reducer func(result int,element int)int,initial int)int
-//      err := MakeReduce(&sumReduce)
-//      // TODO: Handle error
-//      result := sumReduce([]int{1,2,3},func(result,element int)int{
-//          return result + element
-//      })
-//      fmt.Print(result)
-//      // Output:
-//      // 1
-//
 func MakeReduce(pointerToFunction interface{}) error {
 	Value := reflect.ValueOf(pointerToFunction)
 	// expect a pointer
@@ -176,19 +232,6 @@ func MakeReduce(pointerToFunction interface{}) error {
 //		map(collection []A, mapper func(A,int,[]A)B )[]B
 //
 // or return an error if types do not match.
-//
-// Example:
-//
-//		type Person struct { Name string }
-//		var mapPersonsToStrings func(persons []Person,mapper func(person Person)string)[]string
-//		err := funcs.MakeMap(&mapPersonsToStrings)
-//		// TODO: handle error
-//		fmt.Print(mapPersonsToStrings([]Person{{"Joe"},{"David"}},func(person Person)string{
-//			return person.Name
-//		}))
-//		// Output:
-//		// [Joe Davis]
-//
 func MakeMap(pointerToFunction interface{}) error {
 	Value := reflect.ValueOf(pointerToFunction)
 	// expect a pointer
@@ -263,21 +306,6 @@ func MakeMap(pointerToFunction interface{}) error {
 // or return an error if types do not match.
 // filter returns a collection of every element for witch
 // predicate returns true.
-//
-// Example:
-//
-//		type Person struct { Age int ; Name string }
-//		var filterAdults func(persons []Person,predicate func(person Person)bool)[]Person
-//		err := funcs.MakeMap(&filterAdults)
-//		// TODO: handle error
-//		people := []Person{{18,"Joe"},{26,"David"},{15,"Anna"}}
-//		adults := filterAdults(people,func(person Person)bool{
-//			return person.Age >= 18
-//		})
-//		fmt.Println(len(adults))
-//		// Output:
-//		// 2
-//
 func MakeFilter(pointerToFunction interface{}) error {
 	Value := reflect.ValueOf(pointerToFunction)
 	// expect a pointer
@@ -515,6 +543,97 @@ func MakeSome(pointerToFunction interface{}) error {
 			}
 			if res {
 				results[0] = reflect.ValueOf(true)
+				return
+			}
+		}
+		return
+	})
+	Value.Elem().Set(filterFunction)
+	return nil
+
+}
+
+// MakeFind creates a find function from a pointer to function with the following signatures :
+//
+//		find(collection []A, predicate func(element A)bool )(result A,index int)
+//		find(collection []A, predicate func(element A, index int)bool )(result A, index int)
+//		find(collection []A, predicate func(element A, index int, collection []A)bool )(result A, index int)
+//
+// or return an error if types do not match.
+//
+// find returns an element of the collection and its index if for that element, predicate returns true,
+// otherwise the zero value of the collection's element type and -1 .
+//
+func MakeFind(pointerToFunction interface{}) error {
+	Value := reflect.ValueOf(pointerToFunction)
+	// expect a pointer
+	if Value.Kind() != reflect.Ptr {
+		return ErrNotAPointer
+	}
+	Function := Value.Elem()
+	// expect a pointer to function
+	if Function.Kind() != reflect.Func {
+		return ErrNotAFunction
+	}
+	FunctionType := Function.Type()
+	// expect a function with 2 arguments
+	if FunctionType.NumIn() != 2 {
+		return ErrInvalidNumberOfInputValues
+	}
+	// expect a function with a single return value
+	if FunctionType.NumOut() != 2 {
+		return ErrInvalidNumberOfReturnValues
+	}
+	CollectionType := FunctionType.In(0)
+
+	if FunctionType.Out(0) != CollectionType.Elem() {
+		return ErrUnexpectedType
+	}
+	if FunctionType.Out(1) != reflect.TypeOf(1) {
+		return ErrUnexpectedType
+	}
+
+	PredicateType := FunctionType.In(1)
+
+	if PredicateType.NumOut() != 1 {
+		return ErrInvalidNumberOfReturnValues
+	}
+	if numIn := PredicateType.NumIn(); numIn < 1 || numIn > 3 {
+		return ErrInvalidNumberOfInputValues
+	}
+	if PredicateType.Out(0) != reflect.TypeOf(bool(true)) {
+		return ErrUnexpectedType
+	}
+	if CollectionType.Elem() != PredicateType.In(0) {
+		return ErrUnexpectedType
+	}
+	if PredicateType.NumIn() > 1 {
+		if PredicateType.In(1) != reflect.TypeOf(1) {
+			return ErrUnexpectedType
+		}
+	}
+	if PredicateType.NumIn() > 2 {
+		if PredicateType.In(2) != CollectionType {
+			return ErrUnexpectedType
+		}
+	}
+	filterFunction := reflect.MakeFunc(FunctionType, func(args []reflect.Value) (results []reflect.Value) {
+		collection := args[0]
+		predicate := args[1]
+		results = []reflect.Value{reflect.Zero(collection.Type().Elem()), reflect.ValueOf(-1)}
+		for i := 0; i < collection.Len(); i++ {
+			var res bool
+			switch predicate.Type().NumIn() {
+			case 1:
+				res = predicate.Call([]reflect.Value{collection.Index(i)})[0].Bool()
+			case 2:
+				res = predicate.Call([]reflect.Value{collection.Index(i), reflect.ValueOf(i)})[0].Bool()
+			case 3:
+				res = predicate.Call([]reflect.Value{collection.Index(i), reflect.ValueOf(i), collection})[0].Bool()
+			}
+			if res {
+				results[0] = collection.Index(i)
+				results[1] = reflect.ValueOf(i)
 				return
 			}
 		}

@@ -76,12 +76,14 @@ func ExampleMakeMap() {
 		ID    int
 	}
 	var mapBooksToStrings func([]Book, func(Book) string) []string
-	fmt.Println(funcs.MakeMap(&mapBooksToStrings))
-	fmt.Println(mapBooksToStrings([]Book{{"Les Misérables", 34043}, {"Germinal", 349439}}, func(book Book) string {
+	if err := funcs.MakeMap(&mapBooksToStrings); err != nil {
+		log.Fatal(err)
+	}
+	books := []Book{{"Les Misérables", 34043}, {"Germinal", 349439}}
+	fmt.Println(mapBooksToStrings(books, func(book Book) string {
 		return book.Title
 	}))
 	// Output:
-	// <nil>
 	// [Les Misérables Germinal]
 }
 
@@ -89,12 +91,14 @@ func ExampleMakeMap_Second() {
 	// Let's map the person fullnames to an array of names
 	type Person struct{ FirstName, LastName string }
 	var mapPersonsToStrings func([]Person, func(Person, int) string) []string
-	fmt.Println(funcs.MakeMap(&mapPersonsToStrings))
-	fmt.Println(mapPersonsToStrings([]Person{{"John", "Doe"}, {"Jane", "Doe"}}, func(p Person, index int) string {
+	if err := funcs.MakeMap(&mapPersonsToStrings); err != nil {
+		log.Fatal(err)
+	}
+	people := []Person{{"John", "Doe"}, {"Jane", "Doe"}}
+	fmt.Println(mapPersonsToStrings(people, func(p Person, index int) string {
 		return fmt.Sprintf("#%d %s %s", index, p.FirstName, p.LastName)
 	}))
 	// Output:
-	// <nil>
 	// [#0 John Doe #1 Jane Doe]
 }
 
@@ -199,4 +203,53 @@ func ExampleMakeInclude() {
 	// <nil>
 	// true
 	// false
+}
+
+func ExampleForEach() {
+	// let's create a for each function
+	var forEachString func([]string, func(string, int, []string))
+	if err := funcs.MakeForEach(&forEachString); err != nil {
+		log.Fatal(err)
+	}
+	forEachString([]string{"a", "b", "c", "d"}, func(s string, i int, strings []string) {
+		fmt.Print(s, ":", i)
+		if i < len(strings)-1 {
+			fmt.Print(",")
+		}
+	})
+	// Output:
+	// a:0,b:1,c:2,d:3
+}
+
+func ExampleMakeFind() {
+	// Let's create a find function
+	type City struct {
+		Name string
+		Code int
+	}
+	var findCity func([]City, func(city City) bool) (city City, index int)
+
+	if err := funcs.MakeFind(&findCity); err != nil {
+		log.Fatal(err)
+	}
+
+	cities := []City{{"Albany", 349}, {"Portland", 556}, {"Boston", 494}}
+	// if found , it returns the found element and its index
+	city, index := findCity(cities, func(city City) bool {
+		return city.Code == 494
+	})
+	fmt.Println(city)
+	fmt.Println(index)
+	// if not found, it returns the zero value of a city element and -1
+	city, index = findCity(cities, func(city City) bool {
+		return city.Code == 690
+	})
+	fmt.Println(city)
+	fmt.Println(index)
+
+	// Output:
+	// {Boston 494}
+	// 2
+	// { 0}
+	// -1
 }

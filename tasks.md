@@ -3,9 +3,8 @@
 - [x] add funcs.MakeSome
 - [x] add funcs.MakeFilter
 - [ ] add funcs.MakeLastIndexOf
-- [ ] add funcs.MakeFind
-- [ ] add funcs.MakeFindIndex
+- [x] add funcs.MakeFind
 - [ ] add funcs.MakeReverse
 - [ ] add funcs.MakeSort
-- [ ] add funcs.MakeForEach
+- [x] add funcs.MakeForEach
 - [x] add funcs.MakeInclude
