@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/Mparaiso/go-tiger/funcs"
 	"github.com/Mparaiso/go-tiger/logger"
 	"github.com/Mparaiso/go-tiger/tag"
 
@@ -42,15 +43,15 @@ func (meta metadata) String() string {
 	return metadataToString(meta)
 
 }
-func (meta metadata) getIDForValue(value reflect.Value) (ObjectId, error) {
+func (meta metadata) getIDForValue(value reflect.Value) (bson.ObjectId, error) {
 	idField, ok := meta.findIDField()
 	if !ok {
 		return ZeroObjectID, ErrIDFieldNotFound
 	}
-	if field, ok := value.Type().FieldByName(idField.name); !ok {
+	if _, ok := value.Type().FieldByName(idField.name); !ok {
 		return ZeroObjectID, ErrIDFieldNotFound
 	}
-	fieldValue := value.FieldByName(idField.name)
+	fieldValue := value.FieldByName(idField.name).Interface()
 	if id, ok := fieldValue.(bson.ObjectId); !ok {
 		return ZeroObjectID, ErrIDFieldNotFound
 	} else {
@@ -522,14 +523,17 @@ func (manager *defaultDocumentManager) resolveAllRelations(values interface{}) e
 		for _, field := range meta.getFieldsWithRelation() {
 			switch field.relation.relation {
 			case referenceMany:
-				objectIds := []bson.ObjectId{}
-				for i := 0; i < Values.Len(); i++ {
-					if id, err := meta.getIDForValue(Values.Index(i)); err != nil {
-						return err
-					} else {
-						objectIds = append(objectIds, id)
+				values := func() []reflect.Value {
+					res := []reflect.Value{}
+					for i := 0; i < Values.Len(); i++ {
+						res = append(res, Values.index(i))
 					}
-				}
+					return res
+				}()
+				valuesKeyedByObjectId := keyValuesByObjectId(values, func(val Value) bson.ObjectId {
+					id, _ := meta.getIDForValue(val)
+					return id
+				})
 				results := []map[string]interface{}{}
 				err := manager.GetDB().C(meta.collectionName).Find(bson.M{"_id": bson.M{"$in": objectIds}}).Select(bson.M{field.key: 1, "_id": 1}).All(&results)
 				if err != nil {
@@ -543,38 +547,28 @@ func (manager *defaultDocumentManager) resolveAllRelations(values interface{}) e
 						relatedObjectIds = append(relatedObjectIds, relatedIds...)
 					}
 				}
-				relatedMeta, relatedType := manager.metadatas.FindMetadataByCollectionName(field.relation.targetDocument)
-				if relatedMeta == zeroMetadata {
+				_, relatedType := manager.metadatas.FindMetadataByCollectionName(field.relation.targetDocument)
+				if relatedType == nil {
 					return ErrDocumentNotRegistered
 				}
-				relatedResultValues := reflect.New(reflect.SliceOf(relationType))
-				err := manager.GetDB().C(field.relation.targetDocument).Find(bson.M{"_id": bson.M{"$id": relatedObjectIds}}).All(&relatedResultValues.Interface())
-				if err != nil {
-					return err
-				}
-				// for each values in result
-				for i := 0; i < Values.Len(); i++ {
-					// get the id
-					id, _ := meta.getIDForValue(Values.Index(i))
-					for _, result := range results {
-						if id == result["_id"].(bson.ObjectId) {
-							ids := result[field.key].([]interface{})
-							for j := 0; j < relatedResultValues.Len(); j++ {
-								relatedId, _ := manager.metadatas.GetIDForValue(relatedResultValues.Index(j).Interface())
-								for k, candidateId := range ids {
-									if relatedId == candidateId.(bson.ObjectId) {
-										// add to value collection
-									}
-								}
-							}
-							break
+				relatedResultValues := reflect.New(reflect.SliceOf(relatedType))
+				err = manager.GetDB().C(field.relation.targetDocument).Find(bson.M{"_id": bson.M{"$in": relatedObjectIds}}).All(relatedResultValues.Interface())
+				for i := 0; i < relatedResultValues.Len(); i++ {
+					id, _ := manager.metadatas.GetIDForValue(relatedResultValues.Index(i).Interface())
+					for j := 0; j < len(results); j++ {
+						if indexOf(results[field.Key].([]interface{}), id) > 0 {
+
 						}
 					}
+				}
+				if err != nil {
+					return err
 				}
 			case referenceOne:
 			}
 		}
 	}
+	return nil
 }
 
 // resolveRelations resolves all relations for value if value's type was registered
@@ -749,12 +743,7 @@ func metadataToString(meta metadata) string {
 	return result + "\n]}\n"
 }
 
-func indexOf(collection interface{}, value interface{}) int {
-	collectionValue := reflect.Indirect(flect.ValueOf(collection))
-	for i := 0; i < collectionValue.Len(); i++ {
-		if collectionValue.Index(i).Interface() == value {
-			return i
-		}
-	}
-	return -1
-}
+var (
+	keyValuesByObjectId func(collection []reflect.Value, selector func(reflect.Value) bson.ObjectId) map[bson.ObjectId]reflect.Value
+	_                   = funcs.Must(funcs.MakeKeyBy(&keyValuesByObjectId))
+)
