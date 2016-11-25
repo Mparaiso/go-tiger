@@ -2,21 +2,20 @@
 package funcs
 
 import (
-	"fmt"
+	"errors"
 	"reflect"
-	"runtime"
 )
 
 var (
-	ErrNotAPointer                 = fmt.Errorf("funcs: Error the value is not a pointer")
-	ErrNotAFunction                = fmt.Errorf("funcs: Error the value is not a function")
-	ErrNotEnoughArguments          = fmt.Errorf("funcs: Error the signature of the function doesn't have enough arguments to be set")
-	ErrReduceIncompatibleSignature = fmt.Errorf("funcs: Error the signature of the function is not compatible with a reduce operation")
-	ErrNotIterable                 = fmt.Errorf("funcs: Error the value is not a slice or an array")
-	ErrInvalidNumberOfReturnValues = fmt.Errorf("funcs: Error the number of return values in the function is not valid")
-	ErrInvalidNumberOfInputValues  = fmt.Errorf("funcs: Error the number of arguments in the function is not valid")
-	ErrUnexpectedType              = fmt.Errorf("funcs: Error a type was expected and a different type was found")
-	ErrNoComparableType            = fmt.Errorf("funcs: Error a type was expected to be comparable")
+	ErrNotAPointer                 = errors.New("funcs: Error the value is not a pointer")
+	ErrNotAFunction                = errors.New("funcs: Error the value is not a function")
+	ErrNotEnoughArguments          = errors.New("funcs: Error the signature of the function doesn't have enough arguments to be set")
+	ErrReduceIncompatibleSignature = errors.New("funcs: Error the signature of the function is not compatible with a reduce operation")
+	ErrNotIterable                 = errors.New("funcs: Error the value is not a slice or an array")
+	ErrInvalidNumberOfReturnValues = errors.New("funcs: Error the number of return values in the function is not valid")
+	ErrInvalidNumberOfInputValues  = errors.New("funcs: Error the number of arguments in the function is not valid")
+	ErrUnexpectedType              = errors.New("funcs: Error a type was expected and a different type was found")
+	ErrNoComparableType            = errors.New("funcs: Error a type was expected to be comparable")
 )
 
 // Must panics on error
@@ -27,8 +26,7 @@ var (
 //      var _ := funcs.Must(ShouldNotReturnAnError())
 func Must(err error) error {
 	if err != nil {
-		_, file, line, _ := runtime.Caller(1)
-		panic(fmt.Errorf("%s:%d \n\t%s", file, line, err))
+		panic(err)
 	}
 	return err
 }
