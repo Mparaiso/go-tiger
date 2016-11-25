@@ -42,7 +42,7 @@ var (
 )
 
 // Must panics on error
-// it returns an error conveniantly so it can be used in a
+// it returns an error conveniently so it can be used in a
 // declaration statement outside a body
 // example:
 //
@@ -711,7 +711,9 @@ func MakeIndexOf(pointerToFunction interface{}) error {
 //		include([]T,T)bool
 //
 // or returns an error if types do not match.
+//
 // include returns true if element T exists in collection []T ,else returns false.
+// T must be a comparable type.
 func MakeInclude(pointerToFunction interface{}) error {
 	Value := reflect.ValueOf(pointerToFunction)
 	// expect a pointer

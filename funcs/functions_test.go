@@ -205,7 +205,7 @@ func ExampleMakeInclude() {
 	// false
 }
 
-func ExampleForEach() {
+func ExampleMakeForEach() {
 	// let's create a for each function
 	var forEachString func([]string, func(string, int, []string))
 	if err := funcs.MakeForEach(&forEachString); err != nil {
