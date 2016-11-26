@@ -1,3 +1,4 @@
+// Package mongo provides a object document mapper, or ODM for mongodb, strongly influenced by Doctrine Mongo ODM.
 package mongo
 
 import (
@@ -37,10 +38,14 @@ var (
 // DocumentManager is a mongodb document manager
 type DocumentManager interface {
 
-	// Register adds a new type to the document manager.
-	// A pointer to struct is expected
+	// Register a new document type, targetDocument is the name of the document and the collection name,
+	// document is a pointer to struct.
+	// returns an error on error.
+	// use DocumentManager.RegisterMany to register many documents at the same time.
 	Register(collectionName string, value interface{}) error
 
+	// register many documents or returns an error on error
+	RegisterMany(documents map[string]interface{}) error
 	// Persist saves a document. No document is sent to the db
 	// until flush is called
 	Persist(value interface{})
@@ -294,19 +299,35 @@ func (manager *defaultDocumentManager) log(messages ...interface{}) {
 	}
 }
 
-func (manager *defaultDocumentManager) Register(collectionName string, value interface{}) error {
-	if !isPointer(value) {
+// Register a new document type, targetDocument is the name of the document and the collection name,
+// document is a pointer to struct.
+// use DocumentManager.RegisterMany to register many documents at the same time.
+func (manager *defaultDocumentManager) Register(targetDocument string, document interface{}) error {
+	documentType := reflect.TypeOf(document)
+	if documentType.Kind() != reflect.Ptr {
 		return ErrNotAPointer
 	}
-	meta, err := getTypeMetadatas(value)
+	if documentType.Elem().Kind() != reflect.Struct {
+		return ErrNotAstruct
+	}
+	meta, err := getTypeMetadatas(document)
 	if err != nil {
 		return err
 	}
-	meta.collectionName = collectionName
+	meta.collectionName = targetDocument
 	// parser := tag.NewParser(strings.NewReader(s string) )
-	manager.metadatas[reflect.TypeOf(value)] = meta
+	manager.metadatas[documentType] = meta
 
-	manager.log("Type registered :", collectionName, meta)
+	manager.log("Type registered :", targetDocument, meta)
+	return nil
+}
+
+func (manager *defaultDocumentManager) RegisterMany(documents map[string]interface{}) error {
+	for targetDocument, document := range documents {
+		if err := manager.Register(targetDocument, document); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
