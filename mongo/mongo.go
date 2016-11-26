@@ -1,4 +1,4 @@
-// Package mongo provides a object document mapper, or ODM for mongodb, strongly influenced by Doctrine Mongo ODM.
+// Package mongo provides an object document mapper, or ODM for mongodb, strongly influenced by Doctrine Mongo ODM.
 package mongo
 
 import (
@@ -15,15 +15,17 @@ import (
 )
 
 var (
-	// ErrDocumentNotRegistered is yield when a type that has not been registered is requested by the DocumentManager
+	// ErrDocumentNotRegistered is yielded when a type that has not been registered is requested by the DocumentManager
 	ErrDocumentNotRegistered = fmt.Errorf("Error the type of the document was not registered in the document manager")
-	// ErrIDFieldNotFound is yield when _id field wasn't found in a struct
+	// ErrIDFieldNotFound is yielded when _id field wasn't found in a struct
 	ErrIDFieldNotFound = fmt.Errorf("Error no _id field defined for type")
-	// ErrNotAstruct is yield when a struct was expected
+	// ErrMappedFieldNotFound is yielded when the field of a mappedBy annotation was not found
+	ErrMappedFieldNotFound = fmt.Errorf("Error mapped field not found, check mappedBy annotation for document")
+	// ErrNotAstruct is yielded when a struct was expected
 	ErrNotAstruct = fmt.Errorf("Error a struct was expected")
-	// ErrNotAPointer is yield when a pointer was expected
+	// ErrNotAPointer is yielded when a pointer was expected
 	ErrNotAPointer = fmt.Errorf("Error a pointer was expected")
-	// ErrNotAnArray is yield when an array was expected
+	// ErrNotAnArray is yielded when an array was expected
 	ErrNotAnArray = fmt.Errorf("Error an array was expected")
 	// ErrNotImpletemented is yielded when a method was called yet is not implemented
 	ErrNotImpletemented = fmt.Errorf("Error a called method is not implemented")
@@ -32,7 +34,7 @@ var (
 	zeroMetadata     = metadata{}
 	zeroRelation     = relation{}
 	// ZeroObjectID represents a zero value for bson.ObjectId
-	ZeroObjectID = reflect.Zero(reflect.TypeOf(bson.NewObjectId())).Interface().(bson.ObjectId)
+	zeroObjectID = reflect.Zero(reflect.TypeOf(bson.NewObjectId())).Interface().(bson.ObjectId)
 )
 
 // DocumentManager is a mongodb document manager
@@ -46,13 +48,14 @@ type DocumentManager interface {
 
 	// register many documents or returns an error on error
 	RegisterMany(documents map[string]interface{}) error
+
 	// Persist saves a document. No document is sent to the db
 	// until flush is called
-	Persist(value interface{})
+	Persist(document interface{})
 
 	// Remove deletes a document. Flush must be called to commit changes
 	// to the database
-	Remove(value interface{})
+	Remove(document interface{})
 
 	// Flush executes saves,updates and removes pending in the document manager
 	Flush() error
@@ -74,202 +77,6 @@ type DocumentManager interface {
 
 	// SetLogger sets the logger
 	SetLogger(logger.Logger)
-}
-
-type metadata struct {
-	collectionName string
-	idField        string
-	fields         []field
-}
-
-func (meta metadata) String() string {
-	return metadataToString(meta)
-
-}
-func (meta metadata) findFieldByFieldName(fieldname string) (f field, found bool) {
-	for _, field := range meta.fields {
-		if field.name == fieldname {
-			return field, true
-		}
-	}
-	return f, false
-}
-func (meta metadata) findIDField() (f field, found bool) {
-	for _, field := range meta.fields {
-		if field.key == "_id" {
-			return field, true
-		}
-	}
-	return
-}
-
-// hasRelation returns true if one of the fields has a relation
-func (meta metadata) hasRelation() bool {
-	for _, field := range meta.fields {
-		if field.hasRelation() {
-			return true
-		}
-	}
-	return false
-}
-
-// getFieldsWithRelation returns a collection of fields with relations
-func (meta metadata) getFieldsWithRelation() (fields []field) {
-	for _, field := range meta.fields {
-		if field.hasRelation() {
-			fields = append(fields, field)
-		}
-	}
-	return
-}
-
-type metadatas map[reflect.Type]metadata
-
-// GetMetadatas returns the metada for a given type
-func (metas metadatas) GetMetadatas(Type reflect.Type) (metadata, error) {
-	if meta, ok := metas[Type]; !ok {
-		return zeroMetadata, ErrDocumentNotRegistered
-	} else {
-		return meta, nil
-	}
-
-}
-
-func (metas metadatas) String() string {
-	return fmt.Sprintf("%+v", metas)
-}
-func (metas metadatas) setIDForValue(document interface{}, id bson.ObjectId) error {
-	Value := reflect.ValueOf(document)
-	meta, ok := metas[Value.Type()]
-	if !ok {
-		return ErrDocumentNotRegistered
-	}
-	Value.Elem().FieldByName(meta.idField).Set(reflect.ValueOf(id))
-	return nil
-}
-
-// GetIDForValue returns the value of the id field for document
-func (metas metadatas) getDocumentID(document interface{}) (id bson.ObjectId, err error) {
-	Value := reflect.ValueOf(document)
-	meta, ok := metas[Value.Type()]
-	if !ok {
-		return id, ErrDocumentNotRegistered
-	}
-	idFields, ok := meta.findIDField()
-	if !ok {
-		return id, ErrIDFieldNotFound
-	}
-	return Value.Elem().FieldByName(idFields.name).Interface().(bson.ObjectId), nil
-
-}
-func (metas metadatas) FindMetadataByCollectionName(name string) (metadata, reflect.Type) {
-	for Type, meta := range metas {
-		if meta.collectionName == name {
-			return meta, Type
-		}
-	}
-	return zeroMetadata, nil
-}
-
-type field struct {
-	// mongodb document key
-	key string
-	// struct field name
-	name string
-	// whether to omit 0 values
-	omitempty bool
-	relation  relation
-	ignore    bool
-}
-
-func (f field) String() string {
-	return fmt.Sprintf(" key:'%s', name:'%s', omitempty:'%v' ignore:'%v' relation:%s ",
-		f.key, f.name, f.omitempty, f.ignore, f.relation)
-
-}
-
-func (f field) hasRelation() bool {
-	return f.relation != zeroRelation
-}
-
-type relation struct {
-	relation         relationType
-	targetDocument   string
-	cascade          cascade
-	relationMap      relationMap
-	relationMapField string
-}
-
-func (r relation) String() string {
-	if isZero(r) {
-		return "{}"
-	}
-	return fmt.Sprintf("{ relation: '%s', targetDocument: '%s', cascade: '%v', map: '%s', mapField: '%v' } ",
-		r.relation, r.targetDocument, r.cascade, r.relationMap, r.relationMapField)
-}
-
-type relationMap int
-
-const (
-	_ relationMap = iota
-	mappedBy
-	inversedBy
-)
-
-func (m relationMap) String() string {
-	switch m {
-	case mappedBy:
-		return "mappedBy"
-	case inversedBy:
-		return "inversedBy"
-	default:
-		return ""
-	}
-}
-
-type relationType int
-
-const (
-	_ relationType = iota
-	referenceMany
-	referenceOne
-)
-
-func (Type relationType) String() string {
-	switch Type {
-	case referenceMany:
-		return "referenceMany"
-	case referenceOne:
-		return "referenceOne"
-	}
-	return ""
-}
-
-type cascade int
-
-const (
-	_ cascade = iota
-	all
-	persist
-	remove
-)
-
-type task int
-
-const (
-	del task = iota
-	insert
-	update
-)
-
-type tasks map[interface{}]task
-
-func (t tasks) pop() (interface{}, task) {
-	for value, task := range t {
-		delete(t, value)
-		return value, task
-	}
-	return nil, 0
 }
 
 type defaultDocumentManager struct {
@@ -421,7 +228,7 @@ func (manager *defaultDocumentManager) doRemove(document interface{}) error {
 		return err
 	}
 	// set the id to a zero value
-	manager.metadatas.setIDForValue(document, ZeroObjectID)
+	manager.metadatas.setIDForValue(document, zeroObjectID)
 	manager.log(fmt.Sprintf("Removed document with id '%s' from collection '%s' ", Map["_id"], metadata.collectionName))
 	return nil
 }
@@ -493,11 +300,11 @@ func (manager *defaultDocumentManager) doPersist(document interface{}) error {
 	return nil
 }
 
-// TODO(mparaiso): a document should be flushed only once
-// keep track of a document that has already been flushed
-// and don't had it again to the tasks.
-// removing should take priority on persisting.
 func (manager *defaultDocumentManager) Flush() error {
+	// TODO : a document should be flushed only once
+	// keep track of a document that has already been flushed
+	// and don't had it again to the tasks.
+	// removing should take priority on persisting.
 	for len(manager.tasks) != 0 {
 		document, theTask := manager.tasks.pop()
 		switch theTask {
@@ -522,7 +329,7 @@ func (manager *defaultDocumentManager) FindBy(query interface{}, documents inter
 	if Value.Elem().Kind() != reflect.Array && Value.Elem().Kind() != reflect.Slice {
 		return ErrNotAnArray
 	}
-	Type := Value.Elem().Type()
+	Type := Value.Elem().Type().Elem()
 	meta, ok := manager.metadatas[Type]
 	if !ok {
 		return ErrDocumentNotRegistered
@@ -541,7 +348,7 @@ func (manager *defaultDocumentManager) FindAll(documents interface{}) error {
 	if Value.Elem().Kind() != reflect.Array && Value.Elem().Kind() != reflect.Slice {
 		return ErrNotAnArray
 	}
-	Type := Value.Elem().Type()
+	Type := Value.Elem().Type().Elem()
 	meta, ok := manager.metadatas[Type]
 	if !ok {
 		return ErrDocumentNotRegistered
@@ -889,7 +696,7 @@ func (manager *defaultDocumentManager) doResolveRelations(document interface{}, 
 					mappedField := field.relation.relationMapField
 					fieldmetadata, found := relatedMeta.findFieldByFieldName(mappedField)
 					if !found {
-						return ErrIDFieldNotFound
+						return ErrMappedFieldNotFound
 					}
 					if err := manager.GetDB().C(mappedCollection).Find(bson.M{fieldmetadata.key: documentID}).Select(bson.M{"_id": 1}).All(&relatedDocuments); err != nil && err != mgo.ErrNotFound {
 						return err
@@ -993,6 +800,201 @@ func (manager *defaultDocumentManager) doResolveRelations(document interface{}, 
 	return nil
 }
 
+type metadata struct {
+	collectionName string
+	idField        string
+	fields         []field
+}
+
+func (meta metadata) String() string {
+	return metadataToString(meta)
+
+}
+func (meta metadata) findFieldByFieldName(fieldname string) (f field, found bool) {
+	for _, field := range meta.fields {
+		if field.name == fieldname {
+			return field, true
+		}
+	}
+	return f, false
+}
+func (meta metadata) findIDField() (f field, found bool) {
+	for _, field := range meta.fields {
+		if field.key == "_id" {
+			return field, true
+		}
+	}
+	return
+}
+
+// hasRelation returns true if one of the fields has a relation
+func (meta metadata) hasRelation() bool {
+	for _, field := range meta.fields {
+		if field.hasRelation() {
+			return true
+		}
+	}
+	return false
+}
+
+// getFieldsWithRelation returns a collection of fields with relations
+func (meta metadata) getFieldsWithRelation() (fields []field) {
+	for _, field := range meta.fields {
+		if field.hasRelation() {
+			fields = append(fields, field)
+		}
+	}
+	return
+}
+
+type metadatas map[reflect.Type]metadata
+
+// GetMetadatas returns the metada for a given type
+func (metas metadatas) GetMetadatas(Type reflect.Type) (metadata, error) {
+	if meta, ok := metas[Type]; !ok {
+		return zeroMetadata, ErrDocumentNotRegistered
+	} else {
+		return meta, nil
+	}
+
+}
+
+func (metas metadatas) String() string {
+	return fmt.Sprintf("%+v", metas)
+}
+func (metas metadatas) setIDForValue(document interface{}, id bson.ObjectId) error {
+	Value := reflect.ValueOf(document)
+	meta, ok := metas[Value.Type()]
+	if !ok {
+		return ErrDocumentNotRegistered
+	}
+	Value.Elem().FieldByName(meta.idField).Set(reflect.ValueOf(id))
+	return nil
+}
+
+// GetIDForValue returns the value of the id field for document
+func (metas metadatas) getDocumentID(document interface{}) (id bson.ObjectId, err error) {
+	Value := reflect.ValueOf(document)
+	meta, ok := metas[Value.Type()]
+	if !ok {
+		return id, ErrDocumentNotRegistered
+	}
+	idFields, ok := meta.findIDField()
+	if !ok {
+		return id, ErrIDFieldNotFound
+	}
+	return Value.Elem().FieldByName(idFields.name).Interface().(bson.ObjectId), nil
+
+}
+func (metas metadatas) FindMetadataByCollectionName(name string) (metadata, reflect.Type) {
+	for Type, meta := range metas {
+		if meta.collectionName == name {
+			return meta, Type
+		}
+	}
+	return zeroMetadata, nil
+}
+
+type field struct {
+	// mongodb document key
+	key string
+	// struct field name
+	name string
+	// whether to omit 0 values
+	omitempty bool
+	relation  relation
+	ignore    bool
+}
+
+func (f field) String() string {
+	return fmt.Sprintf(" key:'%s', name:'%s', omitempty:'%v' ignore:'%v' relation:%s ",
+		f.key, f.name, f.omitempty, f.ignore, f.relation)
+
+}
+
+func (f field) hasRelation() bool {
+	return f.relation != zeroRelation
+}
+
+type relation struct {
+	relation         relationType
+	targetDocument   string
+	cascade          cascade
+	relationMap      relationMap
+	relationMapField string
+}
+
+func (r relation) String() string {
+	if isZero(r) {
+		return "{}"
+	}
+	return fmt.Sprintf("{ relation: '%s', targetDocument: '%s', cascade: '%v', map: '%s', mapField: '%v' } ",
+		r.relation, r.targetDocument, r.cascade, r.relationMap, r.relationMapField)
+}
+
+type relationMap int
+
+const (
+	_ relationMap = iota
+	mappedBy
+	inversedBy
+)
+
+func (m relationMap) String() string {
+	switch m {
+	case mappedBy:
+		return "mappedBy"
+	case inversedBy:
+		return "inversedBy"
+	default:
+		return ""
+	}
+}
+
+type relationType int
+
+const (
+	_ relationType = iota
+	referenceMany
+	referenceOne
+)
+
+func (Type relationType) String() string {
+	switch Type {
+	case referenceMany:
+		return "referenceMany"
+	case referenceOne:
+		return "referenceOne"
+	}
+	return ""
+}
+
+type cascade int
+
+const (
+	_ cascade = iota
+	all
+	persist
+	remove
+)
+
+type task int
+
+const (
+	del task = iota
+	insert
+	update
+)
+
+type tasks map[interface{}]task
+
+func (t tasks) pop() (interface{}, task) {
+	for value, task := range t {
+		delete(t, value)
+		return value, task
+	}
+	return nil, 0
+}
 func stripID(Map map[string]interface{}) map[string]interface{} {
 	delete(Map, "_id")
 	return Map
