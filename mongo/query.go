@@ -22,24 +22,24 @@ import (
 
 // QueryBuilder builds complex queries
 // managed by the document manager
-type QueryBuilder interface {
-	Find(query interface{}) QueryBuilder
+type queryBuilder interface {
+	Find(query interface{}) queryBuilder
 
 	// Sort asks the database to order returned documents according to the
 	// provided field names
 	// @see http://www.mongodb.org/display/DOCS/Sorting+and+Natural+Order
-	Sort(...string) QueryBuilder
+	Sort(...string) queryBuilder
 
 	// Limit restricts the maximum number of documents retrieved to n
-	Limit(int) QueryBuilder
+	Limit(int) queryBuilder
 
 	// Skip skips over the n initial documents from the query results.
-	Skip(int) QueryBuilder
+	Skip(int) queryBuilder
 
 	// Select enables selecting which fields should be retrieved for the results
 	// found.
 	// @see http://www.mongodb.org/display/DOCS/Retrieving+a+Subset+of+Fields
-	Select(query interface{}) QueryBuilder
+	Select(query interface{}) queryBuilder
 
 	// One assigns one document or returns an error
 	// it expects a struct pointer
@@ -58,31 +58,31 @@ type defaultQueryBuilder struct {
 	order           []string
 }
 
-func newDefaultQueryBuilder(documentManager *defaultDocumentManager) QueryBuilder {
+func newDefaultQueryBuilder(documentManager *defaultDocumentManager) queryBuilder {
 	return &defaultQueryBuilder{documentManager: documentManager}
 }
 
-func (qb *defaultQueryBuilder) Find(query interface{}) QueryBuilder {
+func (qb *defaultQueryBuilder) Find(query interface{}) queryBuilder {
 	qb.query = query
 	return qb
 }
 
-func (qb *defaultQueryBuilder) Limit(limit int) QueryBuilder {
+func (qb *defaultQueryBuilder) Limit(limit int) queryBuilder {
 	qb.limit = limit
 	return qb
 }
 
-func (qb *defaultQueryBuilder) Skip(skip int) QueryBuilder {
+func (qb *defaultQueryBuilder) Skip(skip int) queryBuilder {
 	qb.skip = skip
 	return qb
 }
 
-func (qb *defaultQueryBuilder) Select(fieldSelection interface{}) QueryBuilder {
+func (qb *defaultQueryBuilder) Select(fieldSelection interface{}) queryBuilder {
 	qb.selection = fieldSelection
 	return qb
 }
 
-func (qb *defaultQueryBuilder) Sort(fields ...string) QueryBuilder {
+func (qb *defaultQueryBuilder) Sort(fields ...string) queryBuilder {
 	qb.order = fields
 	return qb
 }

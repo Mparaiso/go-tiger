@@ -93,7 +93,7 @@ type DocumentManager interface {
 	SetLogger(logger.Logger)
 
 	// CreateQuery creates a query builder for complex queries
-	CreateQuery() QueryBuilder
+	CreateQuery() queryBuilder
 }
 
 type defaultDocumentManager struct {
@@ -266,7 +266,7 @@ func (manager *defaultDocumentManager) FindID(documentID interface{}, document i
 	return manager.resolveRelations(document)
 }
 
-func (manager *defaultDocumentManager) CreateQuery() QueryBuilder {
+func (manager *defaultDocumentManager) CreateQuery() queryBuilder {
 	return newDefaultQueryBuilder(manager)
 }
 
@@ -446,236 +446,311 @@ func (manager *defaultDocumentManager) doResolveAllRelations(documents interface
 		return err
 	}
 	// get an []reflect.Value so it is easy to iterate on reflect.Value
-	values := func() []reflect.Value {
-		res := []reflect.Value{}
-		for i := 0; i < Collection.Len(); i++ {
-			res = append(res, Collection.Index(i))
-		}
-		return res
-	}()
+	sourceValues := convertValueToArrayOfValues(Collection)
 	// key values by bson.Object so they are easier to look up
-	valuesKeyedByObjectID := keyValuesByObjectID(values, func(val reflect.Value) bson.ObjectId {
+	sourceValuesKeyedBySourceID := keyValuesByObjectID(sourceValues, func(val reflect.Value) bson.ObjectId {
 		id, _ := manager.metadatas.getDocumentID(val.Interface())
 		return id
 	})
 	// add values to previously fetched objects
-	for objectID, value := range valuesKeyedByObjectID {
+	for objectID, value := range sourceValuesKeyedBySourceID {
 		fetchedDocuments[objectID] = value.Interface()
 	}
 	// if the metadata has relations
 	if meta.hasRelation() {
 
-		// get all objects ids
-		documentIds := getObjectIds(valuesKeyedByObjectID)
+		// get all document ids
+		documentIds := getKeys(sourceValuesKeyedBySourceID)
 		// for each field that has a relation
 		for _, field := range meta.getFieldsWithRelation() {
 			manager.log("\tRelation for field : ", field.name, field.relation.relation, field.relation.targetDocument, field.relation.relationMap, field.relation.relationMapField)
 			switch field.relation.relation {
 
 			case referenceMany:
-				// the documents reference many related documents
-				results := []map[string]interface{}{}
-				if err = manager.GetDB().C(meta.collectionName).Find(bson.M{"_id": bson.M{"$in": documentIds}}).Select(bson.M{field.key: 1, "_id": 1}).All(&results); err != nil {
-					return err
-				}
-				resultsKeyedByObjectID := keyResultsBySourceID(results, func(result map[string]interface{}) bson.ObjectId {
-					return result["_id"].(bson.ObjectId)
-				})
 
-				// let's see if some related documents have already been fetched
-				for objectID, result := range resultsKeyedByObjectID {
-					value := valuesKeyedByObjectID[objectID]
-					// if field is empty continue
-					if _, ok := result[field.key]; !ok {
-						continue
-					}
-					// otherwise iterate
-					for _, relatedID := range result[field.key].([]interface{}) {
-						if document, ok := fetchedDocuments[relatedID.(bson.ObjectId)]; ok {
-							value.Elem().FieldByName(field.name).Set(reflect.Append(value.Elem().FieldByName(field.name), reflect.ValueOf(document)))
-						}
-					}
-				}
-				// let's filter out already existing related documents by objectID
-				relatedObjectIds :=
-					filterObjectIds(
-						mapInterfacesToObjectIds(
-							flattenSliceOfInterfaces(
-								mapResultsToInterfaces(results, func(result map[string]interface{}) []interface{} {
-									if _, ok := result[field.key]; !ok {
-										return []interface{}{}
-									}
-									return result[field.key].([]interface{})
-								}),
-							), func(i interface{}) bson.ObjectId {
-								return i.(bson.ObjectId)
-							}),
-						func(id bson.ObjectId) bool {
-							_, ok := fetchedDocuments[id]
-							return !ok
-						})
-				// if there is no related document to fetch, continue
-				if len(relatedObjectIds) == 0 {
-					continue
-				}
-				_, relatedType := manager.metadatas.findMetadataByCollectionName(field.relation.targetDocument)
-				if relatedType == nil {
-					return ErrDocumentNotRegistered
-				}
-				relatedDocumentValues := reflect.New(reflect.SliceOf(relatedType))
-				// fetch the remaining related documents
-				if err = manager.GetDB().C(field.relation.targetDocument).Find(bson.M{"_id": bson.M{"$in": relatedObjectIds}}).All(relatedDocumentValues.Interface()); err != nil {
-					return err
-				}
-				for objectID, result := range resultsKeyedByObjectID {
-					value := valuesKeyedByObjectID[objectID]
-					for _, id := range result[field.key].([]interface{}) {
-						for i := 0; i < relatedDocumentValues.Elem().Len(); i++ {
-							relatedObjectID, _ := manager.metadatas.getDocumentID(relatedDocumentValues.Elem().Index(i).Interface())
-							if id.(bson.ObjectId) == relatedObjectID {
-								value.Elem().FieldByName(field.name).Set(reflect.Append(value.Elem().FieldByName(field.name), relatedDocumentValues.Elem().Index(i)))
-							}
-						}
-					}
-				}
-				// lets resolve the relations of the related documents
-				if err = manager.doResolveAllRelations(relatedDocumentValues.Interface(), fetchedDocuments); err != nil {
-					return err
-				}
-			case referenceOne:
 				switch field.relation.relationMap {
 
 				case mappedBy:
+					{ // all relations for referenceMany/mappedBy
 
-					// first we need to search the owning side for metadata , the owning side is defined by the argument of mappedBy
-					relatedMeta, relatedType := manager.metadatas.findMetadataByCollectionName(field.relation.targetDocument)
-					if relatedType == nil {
-						return ErrDocumentNotRegistered
-					}
-					relatedDocumentMaps := []map[string]interface{}{}
-					// We need the related struct field and the mongodb key of the owning side which holds the reference to the source document
-					relatedField, found := relatedMeta.findFieldByFieldName(field.relation.relationMapField)
-					if !found {
-						return ErrFieldNotFound
-					}
-					// we have a list of source document ids, let's fetch the related documents
-					if err = manager.GetDB().C(relatedMeta.collectionName).Find(bson.M{"_id": bson.M{"$nin": documentIds}, relatedField.key: bson.M{"$in": documentIds}}).Select(bson.M{"_id": 1, relatedField.key: 1}).All(&relatedDocumentMaps); err != nil && err != mgo.ErrNotFound {
-						return err
-					}
-					// 2 cases here. if the related documents reference many then we need to search through an array
-					// if the related documents reference one ,then it is a single value
-					relatedDocumentsMapsMappedByDocumentID := map[bson.ObjectId]map[string]interface{}{}
-					relatedDocumentIds := []bson.ObjectId{}
-					switch relatedField.relation.relation {
-					case referenceMany:
-						for _, relatedDocument := range relatedDocumentMaps {
-							// only append to relatedDocumentIds the documents that have not been fetched yet
-							if _, ok := fetchedDocuments[relatedDocument["_id"].(bson.ObjectId)]; !ok {
-								relatedDocumentIds = append(relatedDocumentIds, relatedDocument["_id"].(bson.ObjectId))
-							}
-							for _, id := range relatedDocument[relatedField.key].([]interface{}) {
-								relatedDocumentsMapsMappedByDocumentID[id.(bson.ObjectId)] = relatedDocument
-							}
+						println("reference many/mapped by")
+						relatedDocs := docs{}
+						relatedMetadata, relatedType := manager.metadatas.findMetadataByCollectionName(field.relation.targetDocument)
+						if relatedType == nil {
+							return ErrDocumentNotRegistered
 						}
-					default:
-						for _, relatedDocument := range relatedDocumentMaps {
-							// only append to relatedDocumentIds the documents that have not been fetched yet
-							if _, ok := fetchedDocuments[relatedDocument["_id"].(bson.ObjectId)]; !ok {
-								relatedDocumentIds = append(relatedDocumentIds, relatedDocument["_id"].(bson.ObjectId))
-							}
-							relatedDocumentsMapsMappedByDocumentID[relatedDocument[relatedField.key].(bson.ObjectId)] = relatedDocument
+						relatedField, ok := relatedMetadata.findFieldByFieldName(field.relation.relationMapField)
+						if !ok {
+							return ErrFieldNotFound
 						}
-					}
+						if err = manager.GetDB().C(relatedMetadata.collectionName).Find(bson.M{relatedField.key: bson.M{"$in": documentIds}}).Select(bson.M{"_id": 1, relatedField.key: 1}).All(&relatedDocs); err != nil && err != mgo.ErrNotFound {
+							return err
+						}
+						println("len fetched docs", len(relatedDocs))
 
-					// let's load the actual related documents fully typed
-					relatedDocuments := reflect.New(reflect.SliceOf(relatedType))
-					if err = manager.GetDB().C(relatedMeta.collectionName).Find(bson.M{"_id": bson.M{"$in": relatedDocumentIds}}).All(relatedDocuments.Interface()); err != nil && err != mgo.ErrNotFound {
-						return err
-					}
-					relatedDocumentsMappedByDocumentID := map[bson.ObjectId]reflect.Value{}
-					// let's first add the documents that have already been fetched
-					for documentId, relatedDocumentMap := range relatedDocumentsMapsMappedByDocumentID {
-						if document, ok := fetchedDocuments[relatedDocumentMap["_id"].(bson.ObjectId)]; ok {
-							relatedDocumentsMappedByDocumentID[documentId] = reflect.ValueOf(document)
-						}
-					}
-					// let's now add the new related documents we just fetched
-					for i := 0; i < relatedDocuments.Elem().Len(); i++ {
-						for documentId, relatedDocumentMap := range relatedDocumentsMapsMappedByDocumentID {
-							if relatedDocumentMap["_id"].(bson.ObjectId) == relatedDocuments.Elem().Index(i).Elem().FieldByName(relatedMeta.idField).Interface().(bson.ObjectId) {
-								relatedDocumentsMappedByDocumentID[documentId] = relatedDocuments.Elem().Index(i)
+						relatedDocsMappedBySourceId := map[bson.ObjectId][]map[string]interface{}{}
+						// 2 cases , the difference between them is wether one has to iterate through objectIds
+						// or mutliple arrays of objectIds
+						switch relatedField.relation.relation {
+						case referenceMany:
+							// iterate through docs containing arrays of object ids
+							for _, doc := range relatedDocs {
+								for _, id := range doc[relatedField.key].([]interface{}) {
+									relatedDocsMappedBySourceId[id.(bson.ObjectId)] = append(relatedDocsMappedBySourceId[id.(bson.ObjectId)], doc)
+								}
+							}
+						case referenceOne:
+							// iterate through docs containing object ids
+							for _, doc := range relatedDocs {
+								relatedDocsMappedBySourceId[doc[relatedField.key].(bson.ObjectId)] = append(relatedDocsMappedBySourceId[doc[relatedField.key].(bson.ObjectId)], doc)
 							}
 						}
+						relatedCollection := reflect.New(reflect.SliceOf(relatedType))
+						// filter out documents that are already in memory
+						relatedIds := filter(relatedDocs.getIds(), func(id bson.ObjectId) bool {
+							_, ok := fetchedDocuments[id]
+							return !ok
+						})
+						if err = manager.GetDB().C(relatedMetadata.collectionName).Find(bson.M{"_id": bson.M{"$in": relatedIds}}).All(relatedCollection.Interface()); err != nil && err != mgo.ErrNotFound {
+							return err
+						}
+						relatedDocsMappedById := map[bson.ObjectId]reflect.Value{}
+						for i := 0; i < relatedCollection.Elem().Len(); i++ {
+							value := relatedCollection.Elem().Index(i)
+							id := value.Elem().FieldByName(relatedMetadata.idField).Interface().(bson.ObjectId)
+							relatedDocsMappedById[id] = value
+						}
+						for sourceId, value := range sourceValuesKeyedBySourceID {
+							if docs, ok := relatedDocsMappedBySourceId[sourceId]; ok {
+								for _, doc := range docs {
+									id := doc["_id"].(bson.ObjectId)
+									// search in docs that have already been fetched in the previous iteration of resolve
+									if v, ok := fetchedDocuments[id]; ok {
+										value.Elem().FieldByName(field.name).Set(reflect.Append(value.Elem().FieldByName(field.name), reflect.ValueOf(v)))
+										continue
+									}
+									// search in the documents that have just been fetched
+									if v, ok := relatedDocsMappedById[id]; ok {
+										// finally append the fetched document to the slice of the field in which the referenceMany/mappedBy
+										// relation was defined
+										value.Elem().FieldByName(field.name).Set(reflect.Append(value.Elem().FieldByName(field.name), v))
+									}
+								}
+							}
+						}
+						// resolve relations for the related documents we just fetched
+						if err = manager.resolveAllRelations(relatedCollection.Interface()); err != nil {
+							return err
+						}
 					}
-					// let's now add each related mapped document
-					for documentID, value := range valuesKeyedByObjectID {
-						value.Elem().FieldByName(field.name).Set(relatedDocumentsMappedByDocumentID[documentID])
-					}
-					// let's resolve the possible relations in the related documents we just fetched
-					if err = manager.doResolveAllRelations(relatedDocuments.Interface(), fetchedDocuments); err != nil {
-						return err
-					}
-
 				default:
+					{ // all relations for referenceMany/inversedBy
 
-					// the documents reference one related document
-					results := []map[string]interface{}{}
-					if err = manager.GetDB().C(meta.collectionName).Find(bson.M{"_id": bson.M{"$in": documentIds}}).Select(bson.M{field.key: 1, "_id": 1}).All(&results); err != nil && err != mgo.ErrNotFound {
-						return err
-					}
-					resultsKeyedByObjectID := keyResultsBySourceID(results, func(result map[string]interface{}) bson.ObjectId {
-						return result["_id"].(bson.ObjectId)
-					})
+						// the documents reference many related documents
+						results := []map[string]interface{}{}
+						if err = manager.GetDB().C(meta.collectionName).Find(bson.M{"_id": bson.M{"$in": documentIds}}).Select(bson.M{field.key: 1, "_id": 1}).All(&results); err != nil {
+							return err
+						}
+						resultsKeyedByObjectID := keyResultsBySourceID(results, func(result map[string]interface{}) bson.ObjectId {
+							return result["_id"].(bson.ObjectId)
+						})
 
-					// search in fetched documents if the relation can already be satisified
-					// if yes then set the field of the related doc to the fetched document
-					for objectID, result := range resultsKeyedByObjectID {
-						relatedObjectID := result[field.key].(bson.ObjectId)
-						if document, ok := fetchedDocuments[relatedObjectID]; ok {
-							valuesKeyedByObjectID[objectID].Elem().FieldByName(field.name).Set(reflect.ValueOf(document))
+						// let's see if some related documents have already been fetched
+						for objectID, result := range resultsKeyedByObjectID {
+							value := sourceValuesKeyedBySourceID[objectID]
+							// if field is empty continue
+							if _, ok := result[field.key]; !ok {
+								continue
+							}
+							// otherwise iterate
+							for _, relatedID := range result[field.key].([]interface{}) {
+								if document, ok := fetchedDocuments[relatedID.(bson.ObjectId)]; ok {
+									value.Elem().FieldByName(field.name).Set(reflect.Append(value.Elem().FieldByName(field.name), reflect.ValueOf(document)))
+								}
+							}
+						}
+						// let's filter out already existing related documents by objectID
+						relatedObjectIds := filter(mapInterfacesToObjectIds(flatten(mapResultsToInterfaces(results, func(result map[string]interface{}) []interface{} {
+							if _, ok := result[field.key]; !ok {
+								return []interface{}{}
+							}
+							return result[field.key].([]interface{})
+						}),
+						), func(i interface{}) bson.ObjectId {
+							return i.(bson.ObjectId)
+						}),
+							func(id bson.ObjectId) bool {
+								_, ok := fetchedDocuments[id]
+								return !ok
+							})
+						// if there is no related document to fetch, continue
+						if len(relatedObjectIds) == 0 {
+							continue
+						}
+						_, relatedType := manager.metadatas.findMetadataByCollectionName(field.relation.targetDocument)
+						if relatedType == nil {
+							return ErrDocumentNotRegistered
+						}
+						relatedDocumentValues := reflect.New(reflect.SliceOf(relatedType))
+						// fetch the remaining related documents
+						if err = manager.GetDB().C(field.relation.targetDocument).Find(bson.M{"_id": bson.M{"$in": relatedObjectIds}}).All(relatedDocumentValues.Interface()); err != nil {
+							return err
+						}
+						for objectID, result := range resultsKeyedByObjectID {
+							value := sourceValuesKeyedBySourceID[objectID]
+							for _, id := range result[field.key].([]interface{}) {
+								for i := 0; i < relatedDocumentValues.Elem().Len(); i++ {
+									relatedObjectID, _ := manager.metadatas.getDocumentID(relatedDocumentValues.Elem().Index(i).Interface())
+									if id.(bson.ObjectId) == relatedObjectID {
+										value.Elem().FieldByName(field.name).Set(reflect.Append(value.Elem().FieldByName(field.name), relatedDocumentValues.Elem().Index(i)))
+									}
+								}
+							}
+						}
+						// lets resolve the relations of the related documents
+						if err = manager.doResolveAllRelations(relatedDocumentValues.Interface(), fetchedDocuments); err != nil {
+							return err
 						}
 					}
-					// we don't need the object ids that have already been fetched
-					relatedObjectIds := filterObjectIds(mapResultsToRelatedObjectIds(results, func(result map[string]interface{}) bson.ObjectId {
-						return result[field.key].(bson.ObjectId)
-					}), func(id bson.ObjectId) bool {
-						_, ok := fetchedDocuments[id]
-						return !ok
-					})
-					// if there is no related document left to fetch , continue
-					if len(relatedObjectIds) == 0 {
-						continue
-					}
-					relatedMeta, relatedType := manager.metadatas.findMetadataByCollectionName(field.relation.targetDocument)
-					if relatedType == nil {
-						return ErrDocumentNotRegistered
-					}
-					relatedDocumentValues := reflect.New(reflect.SliceOf(relatedType))
-					// fetch the remaining documents from the db
-					if err = manager.GetDB().C(field.relation.targetDocument).Find(bson.M{"_id": bson.M{"$in": relatedObjectIds}}).All(relatedDocumentValues.Interface()); err != nil && err != mgo.ErrNotFound {
-						return err
-					}
-					relatedDocumentValuesKeyedByObjectID := keyRelatedResultsByObjectID(func() []reflect.Value {
-						// transform reflect.Value into []reflect.Value so it can be iterated more easily
-						values := []reflect.Value{}
-						for i := 0; i < relatedDocumentValues.Elem().Len(); i++ {
-							values = append(values, relatedDocumentValues.Elem().Index(i))
+				}
+			case referenceOne:
+
+				switch field.relation.relationMap {
+
+				case mappedBy:
+					{ // all relations for referenceOne/mappedBy
+
+						// first we need to search the owning side for metadata , the owning side is defined by the argument of mappedBy
+						relatedMeta, relatedType := manager.metadatas.findMetadataByCollectionName(field.relation.targetDocument)
+						if relatedType == nil {
+							return ErrDocumentNotRegistered
 						}
-						return values
-					}(), func(value reflect.Value) bson.ObjectId {
-						//println(relatedMeta.idField)
-						//println(value.Elem().FieldByName(relatedMeta.idField).Interface().(bson.ObjectId))
-						return value.Elem().FieldByName(relatedMeta.idField).Interface().(bson.ObjectId)
-					})
-					for id, value := range valuesKeyedByObjectID {
-						result := resultsKeyedByObjectID[id]
-						relatedID := result[field.key].(bson.ObjectId)
-						relatedResult := relatedDocumentValuesKeyedByObjectID[relatedID]
-						value.Elem().FieldByName(field.name).Set(relatedResult)
+						relatedDocumentMaps := []map[string]interface{}{}
+						// We need the related struct field and the mongodb key of the owning side which holds the reference to the source document
+						relatedField, found := relatedMeta.findFieldByFieldName(field.relation.relationMapField)
+						if !found {
+							return ErrFieldNotFound
+						}
+						// we have a list of source document ids, let's fetch the related documents
+						if err = manager.GetDB().C(relatedMeta.collectionName).Find(bson.M{"_id": bson.M{"$nin": documentIds}, relatedField.key: bson.M{"$in": documentIds}}).Select(bson.M{"_id": 1, relatedField.key: 1}).All(&relatedDocumentMaps); err != nil && err != mgo.ErrNotFound {
+							return err
+						}
+						// 2 cases here. if the related documents reference many then we need to search through an array
+						// if the related documents reference one ,then it is a single value
+						relatedDocumentsMapsMappedByDocumentID := map[bson.ObjectId]map[string]interface{}{}
+						relatedDocumentIds := []bson.ObjectId{}
+						switch relatedField.relation.relation {
+						case referenceMany:
+							for _, relatedDocument := range relatedDocumentMaps {
+								// only append to relatedDocumentIds the documents that have not been fetched yet
+								if _, ok := fetchedDocuments[relatedDocument["_id"].(bson.ObjectId)]; !ok {
+									relatedDocumentIds = append(relatedDocumentIds, relatedDocument["_id"].(bson.ObjectId))
+								}
+								for _, id := range relatedDocument[relatedField.key].([]interface{}) {
+									relatedDocumentsMapsMappedByDocumentID[id.(bson.ObjectId)] = relatedDocument
+								}
+							}
+						default:
+							for _, relatedDocument := range relatedDocumentMaps {
+								// only append to relatedDocumentIds the documents that have not been fetched yet
+								if _, ok := fetchedDocuments[relatedDocument["_id"].(bson.ObjectId)]; !ok {
+									relatedDocumentIds = append(relatedDocumentIds, relatedDocument["_id"].(bson.ObjectId))
+								}
+								relatedDocumentsMapsMappedByDocumentID[relatedDocument[relatedField.key].(bson.ObjectId)] = relatedDocument
+							}
+						}
+
+						// let's load the actual related documents fully typed
+						relatedDocuments := reflect.New(reflect.SliceOf(relatedType))
+						if err = manager.GetDB().C(relatedMeta.collectionName).Find(bson.M{"_id": bson.M{"$in": relatedDocumentIds}}).All(relatedDocuments.Interface()); err != nil && err != mgo.ErrNotFound {
+							return err
+						}
+						relatedDocumentsMappedByDocumentID := map[bson.ObjectId]reflect.Value{}
+						// let's first add the documents that have already been fetched
+						for documentId, relatedDocumentMap := range relatedDocumentsMapsMappedByDocumentID {
+							if document, ok := fetchedDocuments[relatedDocumentMap["_id"].(bson.ObjectId)]; ok {
+								relatedDocumentsMappedByDocumentID[documentId] = reflect.ValueOf(document)
+							}
+						}
+						// let's now add the new related documents we just fetched
+						for i := 0; i < relatedDocuments.Elem().Len(); i++ {
+							for documentId, relatedDocumentMap := range relatedDocumentsMapsMappedByDocumentID {
+								if relatedDocumentMap["_id"].(bson.ObjectId) == relatedDocuments.Elem().Index(i).Elem().FieldByName(relatedMeta.idField).Interface().(bson.ObjectId) {
+									relatedDocumentsMappedByDocumentID[documentId] = relatedDocuments.Elem().Index(i)
+								}
+							}
+						}
+						// let's now add each related mapped document
+						for documentID, value := range sourceValuesKeyedBySourceID {
+							value.Elem().FieldByName(field.name).Set(relatedDocumentsMappedByDocumentID[documentID])
+						}
+						// let's resolve the possible relations in the related documents we just fetched
+						if err = manager.doResolveAllRelations(relatedDocuments.Interface(), fetchedDocuments); err != nil {
+							return err
+						}
 					}
-					// lets resolve the relations of the related documents
-					if err = manager.doResolveAllRelations(relatedDocumentValues.Interface(), fetchedDocuments); err != nil {
-						return err
+				default:
+					{ // all relations for referenceOne/inversedBy
+
+						// the documents reference one related document
+						results := []map[string]interface{}{}
+						if err = manager.GetDB().C(meta.collectionName).Find(bson.M{"_id": bson.M{"$in": documentIds}}).Select(bson.M{field.key: 1, "_id": 1}).All(&results); err != nil && err != mgo.ErrNotFound {
+							return err
+						}
+						resultsKeyedByObjectID := keyResultsBySourceID(results, func(result map[string]interface{}) bson.ObjectId {
+							return result["_id"].(bson.ObjectId)
+						})
+
+						// search in fetched documents if the relation can already be satisified
+						// if yes then set the field of the related doc to the fetched document
+						for objectID, result := range resultsKeyedByObjectID {
+							relatedObjectID := result[field.key].(bson.ObjectId)
+							if document, ok := fetchedDocuments[relatedObjectID]; ok {
+								sourceValuesKeyedBySourceID[objectID].Elem().FieldByName(field.name).Set(reflect.ValueOf(document))
+							}
+						}
+						// we don't need the object ids that have already been fetched
+						relatedObjectIds := filter(mapResultsToRelatedObjectIds(results, func(result map[string]interface{}) bson.ObjectId {
+							return result[field.key].(bson.ObjectId)
+						}), func(id bson.ObjectId) bool {
+							_, ok := fetchedDocuments[id]
+							return !ok
+						})
+						// if there is no related document left to fetch , continue
+						if len(relatedObjectIds) == 0 {
+							continue
+						}
+						relatedMeta, relatedType := manager.metadatas.findMetadataByCollectionName(field.relation.targetDocument)
+						if relatedType == nil {
+							return ErrDocumentNotRegistered
+						}
+						relatedDocumentValues := reflect.New(reflect.SliceOf(relatedType))
+						// fetch the remaining documents from the db
+						if err = manager.GetDB().C(field.relation.targetDocument).Find(bson.M{"_id": bson.M{"$in": relatedObjectIds}}).All(relatedDocumentValues.Interface()); err != nil && err != mgo.ErrNotFound {
+							return err
+						}
+						relatedDocumentValuesKeyedByObjectID := keyRelatedResultsByObjectID(func() []reflect.Value {
+							// transform reflect.Value into []reflect.Value so it can be iterated more easily
+							values := []reflect.Value{}
+							for i := 0; i < relatedDocumentValues.Elem().Len(); i++ {
+								values = append(values, relatedDocumentValues.Elem().Index(i))
+							}
+							return values
+						}(), func(value reflect.Value) bson.ObjectId {
+							//println(relatedMeta.idField)
+							//println(value.Elem().FieldByName(relatedMeta.idField).Interface().(bson.ObjectId))
+							return value.Elem().FieldByName(relatedMeta.idField).Interface().(bson.ObjectId)
+						})
+						for id, value := range sourceValuesKeyedBySourceID {
+							result := resultsKeyedByObjectID[id]
+							relatedID := result[field.key].(bson.ObjectId)
+							relatedResult := relatedDocumentValuesKeyedByObjectID[relatedID]
+							value.Elem().FieldByName(field.name).Set(relatedResult)
+						}
+						// lets resolve the relations of the related documents
+						if err = manager.doResolveAllRelations(relatedDocumentValues.Interface(), fetchedDocuments); err != nil {
+							return err
+						}
 					}
 				}
 			}
@@ -1021,6 +1096,55 @@ func (t tasks) pop() (interface{}, task) {
 	}
 	return nil, 0
 }
+
+// documents helps deal with fetched documents
+// when resolving relations
+type docs []map[string]interface{}
+
+// mapBy maps docs by a key 'key'.
+// if a doc has no existing key 'key', then it will not be part of result
+func (d docs) mapBy(key string) (result map[interface{}]map[string]interface{}) {
+	result = map[interface{}]map[string]interface{}{}
+	for _, doc := range d {
+		if _, ok := doc[key]; !ok {
+			continue
+		}
+		result[doc[key]] = doc
+	}
+	return
+}
+
+// mapByID maps docs by objectId
+// an optional key can be provided, it defaults to _id
+func (d docs) mapByID(key ...string) (result map[bson.ObjectId]map[string]interface{}) {
+	result = map[bson.ObjectId]map[string]interface{}{}
+	if len(key) == 0 {
+		key = []string{"_id"}
+	}
+	for _, doc := range d {
+		if _, ok := doc[key[0]]; !ok {
+			continue
+		}
+		result[doc[key[0]].(bson.ObjectId)] = doc
+	}
+	return
+}
+
+// getIds return an array of document id
+func (d docs) getIds() (ids []bson.ObjectId) {
+	for _, doc := range d {
+		ids = append(ids, doc["_id"].(bson.ObjectId))
+	}
+	return
+}
+
+func convertValueToArrayOfValues(value reflect.Value) (arrayOfValues []reflect.Value) {
+	for i := 0; i < value.Len(); i++ {
+		arrayOfValues = append(arrayOfValues, value.Index(i))
+	}
+	return
+}
+
 func stripID(Map map[string]interface{}) map[string]interface{} {
 	delete(Map, "_id")
 	return Map
@@ -1146,13 +1270,13 @@ var (
 
 	_ = funcs.Must(funcs.MakeKeyBy(&keyValuesByObjectID))
 
-	getObjectIds func(map[bson.ObjectId]reflect.Value) []bson.ObjectId
+	getKeys func(map[bson.ObjectId]reflect.Value) []bson.ObjectId
 
-	_ = funcs.Must(funcs.MakeGetKeys(&getObjectIds))
+	_ = funcs.Must(funcs.MakeGetKeys(&getKeys))
 
-	flattenSliceOfInterfaces func([][]interface{}) []interface{}
+	flatten func([][]interface{}) []interface{}
 
-	_ = funcs.Must(funcs.MakeFlatten(&flattenSliceOfInterfaces))
+	_ = funcs.Must(funcs.MakeFlatten(&flatten))
 
 	mapResultsToInterfaces func([]map[string]interface{}, func(map[string]interface{}) []interface{}) [][]interface{}
 
@@ -1174,9 +1298,9 @@ var (
 
 	_ = funcs.Must(funcs.MakeMap(&mapInterfacesToObjectIds))
 
-	filterObjectIds func([]bson.ObjectId, func(id bson.ObjectId) bool) []bson.ObjectId
+	filter func([]bson.ObjectId, func(id bson.ObjectId) bool) []bson.ObjectId
 
-	_ = funcs.Must(funcs.MakeFilter(&filterObjectIds))
+	_ = funcs.Must(funcs.MakeFilter(&filter))
 
 	indexOf func([]interface{}, interface{}) int
 

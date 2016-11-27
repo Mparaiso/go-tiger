@@ -162,6 +162,11 @@ func TestMappedBy(t *testing.T) {
 	test.Fatal(t, employee1.Projects[0].Client != nil, true)
 	test.Fatal(t, employee1.Projects[0].Client.Name, "Example")
 	test.Fatal(t, employee1.Projects[1].Client.Name, "Example")
+	projects := []*Project{}
+	err = dm.FindAll(&projects)
+	test.Fatal(t, err, nil)
+	// test resolveAllRelations for Employee's Projects : referenceMany(mappedBy:Projects)
+	test.Fatal(t, len(projects[0].Employee.Projects), 2)
 }
 
 type Author struct {
@@ -441,12 +446,6 @@ func (m MongoLogger) Output(i int, s string) error {
 	return nil
 }
 
-// Given a mongodb server
-// 		Given a collection on the server
-//		When a document A is persisted
-//		It should not return an error
-// 		When the document A is fetched
-//		It should return the correct Document
 func TestMongo(t *testing.T) {
 
 	type Test struct {
