@@ -173,15 +173,20 @@ type Tag struct {
 	// related articles are loaded when Tag is fetched.
 	Articles []*Article `odm:"referenceMany(targetDocument:Article,mappedBy:Tags)"`
 }
+
 type Article struct {
 	ID bson.ObjectId `bson:"_id,omitempty"`
+
 	// The title of the blog post
 	Title string `bson:"Title"`
+
 	// The author of the post, the owning side of the Article/Author relationship
 	Author *Author `odm:"referenceOne(targetDocument:Author)"`
-	// Article reference many tags.
-	// cascade tells the document manager to automatically persist Tags when Article is persisted
-	Tags []*Tag `odm:"referenceMany(targetDocument:Tag,cascade:Persist)"`
+
+	// Article references many tags.
+	// cascade tells the document manager to automatically persist related Tags when Article is persisted,
+	// it will also automatically remove related tags as well.
+	Tags []*Tag `odm:"referenceMany(targetDocument:Tag,cascade:all)"`
 }
 
 func Example() {
@@ -197,15 +202,19 @@ func Example() {
 		// so always explicitely set the key name to the field name
 		Name string `bson:"Name"`
 
-		// Articles written by Author , the inverse owning side of the Article/Author relationship
-		// Author document in the db WiLL not reference Articles directly BUT loading an Author from the db
+		// Articles written by Author , the inverse owning side
+		// of the Article/Author relationship
+		// Author document in the db WiLL not reference Articles directly
+		// BUT loading an Author from the db
 		// will also fetch Articles with the related Author.
 		Articles []*Article `odm:"referenceMany(targetDocument:Article,mappedBy:Author)"`
 	}
 
 	type Tag struct {
 		ID   bson.ObjectId `bson:"_id,omitempty"`
+
 		Name string        `bson:"Name"`
+
 		// Articles that have the tag.
 		// Although Tag doesn't not hold a reference to articles in the database,
 		// related articles are loaded when Tag is fetched.
@@ -213,13 +222,18 @@ func Example() {
 	}
 	type Article struct {
 		ID bson.ObjectId `bson:"_id,omitempty"`
+
 		// The title of the blog post
 		Title string `bson:"Title"`
-		// The author of the post, the owning side of the Article/Author relationship
+
+		// The author of the post, the owning side of
+		// the Article/Author relationship.
 		Author *Author `odm:"referenceOne(targetDocument:Author)"`
-		// Article reference many tags.
-		// cascade tells the document manager to automatically persist Tags when Article is persisted
-		Tags []*Tag `odm:"referenceMany(targetDocument:Tag,cascade:Persist)"`
+
+		// Article references many tags.
+		// cascade tells the document manager to automatically persist related Tags when Article is persisted,
+		// it will also automatically remove related tags as well.
+		Tags []*Tag `odm:"referenceMany(targetDocument:Tag,cascade:all)"`
 	}
 
 	*/
@@ -266,7 +280,7 @@ func Example() {
 	}
 
 	/*
-		in the database this is what collections now look like :
+		This is how documents look like in the database :
 
 		Articles :
 
@@ -336,11 +350,37 @@ func Example() {
 	// should not exist in the db
 
 	tag := new(Tag)
-	if err = documentManager.FindOne(bson.M{"Name": "programming"}, &tag); err != mgo.ErrNotFound {
+	if err = documentManager.FindOne(bson.M{"Name": "programming"}, tag); err != mgo.ErrNotFound {
+		log.Printf("%+v\n", tag)
 		log.Println("the error should be : mgo.ErrNotFound, got ", err)
 		return
 	}
 
+	// use complex queries
+
+	author = new(Author)
+	// query one document
+	query := documentManager.CreateQuery().
+		Find(bson.M{"Name": "John Doe"}).Select(bson.M{"Name": 1})
+
+	if err = query.One(author); err != nil {
+		log.Println("Error querying one author", err)
+		return
+	}
+	fmt.Println("name:", author.Name)
+
+	authors := []*Author{}
+	// query multiple documents
+	query = documentManager.CreateQuery().
+		Find(bson.M{"Name": bson.M{"$ne": "Jane Doe"}}).
+		Select(bson.M{"ID": 1, "Name": 1}).
+		Skip(0).Limit(50).Sort("Name")
+
+	if err = query.All(&authors); err != nil {
+		log.Println("Error querying authors", err)
+		return
+	}
+	fmt.Println("authors:", len(authors))
 	// Output:
 	// author's name : John Doe
 	// number of author's articles : 2
@@ -348,6 +388,8 @@ func Example() {
 	// The number of article's tags : 2
 	// articles length : 2
 	// articles length : 1
+	// name: John Doe
+	// authors: 1
 }
 
 func cleanUp(db *mgo.Database) {
@@ -403,11 +445,11 @@ func TestMongo(t *testing.T) {
 	session, err := mgo.Dial(os.Getenv("MONGODB_TEST_SERVER"))
 	test.Fatal(t, err, nil)
 	defer session.Close()
-	defer session.DB("feedpress_test").C("mongo_tests").DropCollection()
+	defer session.DB(os.Getenv("MONGODB_TEST_DB")).C("mongo_tests").DropCollection()
 
 	// Optional. Switch the session to a monotonic behavior.
 	session.SetMode(mgo.Monotonic, true)
-	collection := session.DB("feedpress_test").C("mongo_tests")
+	collection := session.DB(os.Getenv("MONGODB_TEST_DB")).C("mongo_tests")
 	test1 := &Test{Name: "Initial", Description: "A simple test"}
 	err = collection.Insert(test1)
 	test.Fatal(t, err, nil)

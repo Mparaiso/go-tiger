@@ -1,3 +1,17 @@
+//    Copyright (C) 2016  mparaiso <mparaiso@online.fr>
+//
+//    Licensed under the Apache License, Version 2.0 (the "License");
+//    you may not use this file except in compliance with the License.
+//    You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+//    Unless required by applicable law or agreed to in writing, software
+//    distributed under the License is distributed on an "AS IS" BASIS,
+//    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//    See the License for the specific language governing permissions and
+//    limitations under the License.
+
 // Package mongo provides an object document mapper, or ODM for mongodb, strongly influenced by Doctrine Mongo ODM.
 package mongo
 
@@ -77,6 +91,9 @@ type DocumentManager interface {
 
 	// SetLogger sets the logger
 	SetLogger(logger.Logger)
+
+	// CreateQuery creates a query builder for complex queries
+	CreateQuery() QueryBuilder
 }
 
 type defaultDocumentManager struct {
@@ -151,153 +168,6 @@ func (manager *defaultDocumentManager) Persist(value interface{}) {
 
 func (manager *defaultDocumentManager) Remove(document interface{}) {
 	manager.tasks[document] = del
-}
-
-func (manager *defaultDocumentManager) structToMap(value interface{}) map[string]interface{} {
-	// structToMap turns a struct into a map
-	// ignored fields  and relations are ignored along with zero values if omitempty is configured
-	result := map[string]interface{}{}
-	Value := reflect.ValueOf(value)
-	meta := manager.metadatas[Value.Type()]
-	for _, field := range meta.fields {
-		if field.ignore || (field.omitempty && isZero(Value.Elem().FieldByName(field.name).Interface())) {
-			continue
-		}
-		if field.hasRelation() {
-			continue
-		}
-		if field.name == meta.idField {
-			result["_id"] = Value.Elem().FieldByName(field.name).Interface()
-			continue
-		}
-		result[field.key] = Value.Elem().FieldByName(field.name).Interface()
-	}
-	return result
-}
-
-func (manager *defaultDocumentManager) doRemove(document interface{}) error {
-	metadata, ok := manager.metadatas[reflect.TypeOf(document)]
-	if !ok {
-		return ErrDocumentNotRegistered
-	}
-	Value := reflect.Indirect(reflect.ValueOf(document))
-	Map := manager.structToMap(document)
-	if metadata.hasRelation() {
-		for _, field := range metadata.getFieldsWithRelation() {
-			if field.relation.cascade == all || field.relation.cascade == remove {
-				switch field.relation.relation {
-				case referenceMany:
-					meta, Type := manager.metadatas.FindMetadataByCollectionName(field.relation.targetDocument)
-					if Type != nil {
-						many := Value.FieldByName(field.name)
-						for i := 0; i < many.Len(); i++ {
-							doc := many.Index(i)
-							idField, ok := meta.findIDField()
-							if !ok {
-								continue
-							}
-							id := doc.Elem().FieldByName(idField.name)
-							if !isZero(id.Interface()) {
-								manager.tasks[doc.Interface()] = del
-							}
-						}
-					}
-				case referenceOne:
-					// add id of the reference to map , and add the reference in the documents to be saved
-					meta, Type := manager.metadatas.FindMetadataByCollectionName(field.relation.targetDocument)
-					if Type != nil {
-						one := Value.FieldByName(field.name)
-						if isZero(one.Interface()) {
-							continue
-						}
-						idField, ok := meta.findIDField()
-						if !ok {
-							continue
-						}
-						id := one.Elem().FieldByName(idField.name)
-						if !isZero(id.Interface()) {
-							manager.tasks[one.Interface()] = del
-						}
-					}
-				}
-			}
-		}
-	}
-	err := manager.database.C(metadata.collectionName).RemoveId(Map["_id"])
-	if err != nil {
-		return err
-	}
-	// set the id to a zero value
-	manager.metadatas.setIDForValue(document, zeroObjectID)
-	manager.log(fmt.Sprintf("Removed document with id '%s' from collection '%s' ", Map["_id"], metadata.collectionName))
-	return nil
-}
-
-func (manager *defaultDocumentManager) doPersist(document interface{}) error {
-	metadata, ok := manager.metadatas[reflect.TypeOf(document)]
-	if !ok {
-		return ErrDocumentNotRegistered
-	}
-	Value := reflect.Indirect(reflect.ValueOf(document))
-	Map := manager.structToMap(document)
-	if metadata.hasRelation() {
-		for _, field := range metadata.getFieldsWithRelation() {
-			if field.relation.relationMap != mappedBy {
-				switch field.relation.relation {
-				case referenceMany:
-					objectIDs := []bson.ObjectId{}
-					meta, Type := manager.metadatas.FindMetadataByCollectionName(field.relation.targetDocument)
-					if Type != nil {
-						many := Value.FieldByName(field.name)
-						for i := 0; i < many.Len(); i++ {
-							doc := many.Index(i)
-							idField, ok := meta.findIDField()
-							if !ok {
-								continue
-							}
-							id := doc.Elem().FieldByName(idField.name)
-							if isZero(id.Interface()) {
-								doc.Elem().FieldByName(idField.name).Set(reflect.ValueOf(bson.NewObjectId()))
-							}
-							objectIDs = append(objectIDs, doc.Elem().FieldByName(idField.name).Interface().(bson.ObjectId))
-							if field.relation.cascade == all || field.relation.cascade == persist {
-								manager.tasks[doc.Interface()] = insert
-							}
-						}
-					}
-					Map[field.key] = objectIDs
-				case referenceOne:
-					// add id of the reference to map , and add the reference in the documents to be saved
-					meta, Type := manager.metadatas.FindMetadataByCollectionName(field.relation.targetDocument)
-					if Type != nil {
-						one := Value.FieldByName(field.name)
-						if isZero(one.Interface()) {
-							continue
-						}
-						idField, ok := meta.findIDField()
-						if !ok {
-							continue
-						}
-						id := one.Elem().FieldByName(idField.name)
-						if isZero(id.Interface()) {
-							one.Elem().FieldByName(idField.name).Set(reflect.ValueOf(bson.NewObjectId()))
-						}
-						if field.relation.cascade == all || field.relation.cascade == persist {
-							manager.tasks[one.Interface()] = insert
-						}
-						Map[field.key] = one.Elem().FieldByName(idField.name).Interface().(bson.ObjectId)
-					}
-				}
-			}
-		}
-	}
-	id := Map["_id"]
-	if changeInfo, err := manager.database.C(metadata.collectionName).UpsertId(id, bson.M{"$set": stripID(Map)}); err != nil {
-		return err
-	} else {
-		manager.log(fmt.Sprintf("Persisted document with id '%s' from collection '%s' , %+v ", id, metadata.collectionName, changeInfo))
-	}
-	return nil
 }
 
 func (manager *defaultDocumentManager) Flush() error {
@@ -396,6 +266,157 @@ func (manager *defaultDocumentManager) FindID(documentID interface{}, document i
 	return manager.resolveRelations(document)
 }
 
+func (manager *defaultDocumentManager) CreateQuery() QueryBuilder {
+	return newDefaultQueryBuilder(manager)
+}
+
+func (manager *defaultDocumentManager) structToMap(value interface{}) map[string]interface{} {
+	// structToMap turns a struct into a map
+	// ignored fields  and relations are ignored along with zero values if omitempty is configured
+	result := map[string]interface{}{}
+	Value := reflect.ValueOf(value)
+	meta := manager.metadatas[Value.Type()]
+	for _, field := range meta.fields {
+		if field.ignore || (field.omitempty && isZero(Value.Elem().FieldByName(field.name).Interface())) {
+			continue
+		}
+		if field.hasRelation() {
+			continue
+		}
+		if field.name == meta.idField {
+			result["_id"] = Value.Elem().FieldByName(field.name).Interface()
+			continue
+		}
+		result[field.key] = Value.Elem().FieldByName(field.name).Interface()
+	}
+	return result
+}
+
+func (manager *defaultDocumentManager) doRemove(document interface{}) error {
+	metadata, ok := manager.metadatas[reflect.TypeOf(document)]
+	if !ok {
+		return ErrDocumentNotRegistered
+	}
+	Value := reflect.Indirect(reflect.ValueOf(document))
+	Map := manager.structToMap(document)
+	if metadata.hasRelation() {
+		for _, field := range metadata.getFieldsWithRelation() {
+			if field.relation.cascade == all || field.relation.cascade == remove {
+				switch field.relation.relation {
+				case referenceMany:
+					meta, Type := manager.metadatas.findMetadataByCollectionName(field.relation.targetDocument)
+					if Type != nil {
+						many := Value.FieldByName(field.name)
+						for i := 0; i < many.Len(); i++ {
+							doc := many.Index(i)
+							idField, ok := meta.findIDField()
+							if !ok {
+								continue
+							}
+							id := doc.Elem().FieldByName(idField.name)
+							if !isZero(id.Interface()) {
+								manager.tasks[doc.Interface()] = del
+							}
+						}
+					}
+				case referenceOne:
+					// add id of the reference to map , and add the reference in the documents to be saved
+					meta, Type := manager.metadatas.findMetadataByCollectionName(field.relation.targetDocument)
+					if Type != nil {
+						one := Value.FieldByName(field.name)
+						if isZero(one.Interface()) {
+							continue
+						}
+						idField, ok := meta.findIDField()
+						if !ok {
+							continue
+						}
+						id := one.Elem().FieldByName(idField.name)
+						if !isZero(id.Interface()) {
+							manager.tasks[one.Interface()] = del
+						}
+					}
+				}
+			}
+		}
+	}
+	err := manager.database.C(metadata.collectionName).RemoveId(Map["_id"])
+	if err != nil {
+		return err
+	}
+	// set the id to a zero value
+	manager.metadatas.setIDForValue(document, zeroObjectID)
+	manager.log(fmt.Sprintf("Removed document with id '%s' from collection '%s' ", Map["_id"], metadata.collectionName))
+	return nil
+}
+
+func (manager *defaultDocumentManager) doPersist(document interface{}) error {
+	metadata, ok := manager.metadatas[reflect.TypeOf(document)]
+	if !ok {
+		return ErrDocumentNotRegistered
+	}
+	Value := reflect.Indirect(reflect.ValueOf(document))
+	Map := manager.structToMap(document)
+	if metadata.hasRelation() {
+		for _, field := range metadata.getFieldsWithRelation() {
+			if field.relation.relationMap != mappedBy {
+				switch field.relation.relation {
+				case referenceMany:
+					objectIDs := []bson.ObjectId{}
+					meta, Type := manager.metadatas.findMetadataByCollectionName(field.relation.targetDocument)
+					if Type != nil {
+						many := Value.FieldByName(field.name)
+						for i := 0; i < many.Len(); i++ {
+							doc := many.Index(i)
+							idField, ok := meta.findIDField()
+							if !ok {
+								continue
+							}
+							id := doc.Elem().FieldByName(idField.name)
+							if isZero(id.Interface()) {
+								doc.Elem().FieldByName(idField.name).Set(reflect.ValueOf(bson.NewObjectId()))
+							}
+							objectIDs = append(objectIDs, doc.Elem().FieldByName(idField.name).Interface().(bson.ObjectId))
+							if field.relation.cascade == all || field.relation.cascade == persist {
+								manager.tasks[doc.Interface()] = insert
+							}
+						}
+					}
+					Map[field.key] = objectIDs
+				case referenceOne:
+					// add id of the reference to map , and add the reference in the documents to be saved
+					meta, Type := manager.metadatas.findMetadataByCollectionName(field.relation.targetDocument)
+					if Type != nil {
+						one := Value.FieldByName(field.name)
+						if isZero(one.Interface()) {
+							continue
+						}
+						idField, ok := meta.findIDField()
+						if !ok {
+							continue
+						}
+						id := one.Elem().FieldByName(idField.name)
+						if isZero(id.Interface()) {
+							one.Elem().FieldByName(idField.name).Set(reflect.ValueOf(bson.NewObjectId()))
+						}
+						if field.relation.cascade == all || field.relation.cascade == persist {
+							manager.tasks[one.Interface()] = insert
+						}
+						Map[field.key] = one.Elem().FieldByName(idField.name).Interface().(bson.ObjectId)
+					}
+				}
+			}
+		}
+	}
+	id := Map["_id"]
+	if changeInfo, err := manager.database.C(metadata.collectionName).UpsertId(id, bson.M{"$set": stripID(Map)}); err != nil {
+		return err
+	} else {
+		manager.log(fmt.Sprintf("Persisted document with id '%s' from collection '%s' , %+v ", id, metadata.collectionName, changeInfo))
+	}
+	return nil
+}
+
 func (manager *defaultDocumentManager) resolveAllRelations(documents interface{}) error {
 	// this operation is recursive so we need to keep track of the documents than have already
 	// been fetched from the DB by their (unique) objectIDs.
@@ -420,7 +441,7 @@ func (manager *defaultDocumentManager) doResolveAllRelations(documents interface
 		return ErrNotAnArray
 	}
 	// find metadata for collection element type
-	meta, err := manager.metadatas.GetMetadatas(Collection.Type().Elem())
+	meta, err := manager.metadatas.getMetadatas(Collection.Type().Elem())
 	if err != nil {
 		return err
 	}
@@ -450,6 +471,7 @@ func (manager *defaultDocumentManager) doResolveAllRelations(documents interface
 		for _, field := range meta.getFieldsWithRelation() {
 			manager.log("\tRelation for field : ", field.name, field.relation.relation, field.relation.targetDocument, field.relation.relationMap, field.relation.relationMapField)
 			switch field.relation.relation {
+
 			case referenceMany:
 				// the documents reference many related documents
 				results := []map[string]interface{}{}
@@ -496,7 +518,7 @@ func (manager *defaultDocumentManager) doResolveAllRelations(documents interface
 				if len(relatedObjectIds) == 0 {
 					continue
 				}
-				_, relatedType := manager.metadatas.FindMetadataByCollectionName(field.relation.targetDocument)
+				_, relatedType := manager.metadatas.findMetadataByCollectionName(field.relation.targetDocument)
 				if relatedType == nil {
 					return ErrDocumentNotRegistered
 				}
@@ -522,9 +544,11 @@ func (manager *defaultDocumentManager) doResolveAllRelations(documents interface
 				}
 			case referenceOne:
 				switch field.relation.relationMap {
+
 				case mappedBy:
+
 					// first we need to search the owning side for metadata , the owning side is defined by the argument of mappedBy
-					relatedMeta, relatedType := manager.metadatas.FindMetadataByCollectionName(field.relation.targetDocument)
+					relatedMeta, relatedType := manager.metadatas.findMetadataByCollectionName(field.relation.targetDocument)
 					if relatedType == nil {
 						return ErrDocumentNotRegistered
 					}
@@ -591,7 +615,9 @@ func (manager *defaultDocumentManager) doResolveAllRelations(documents interface
 					if err = manager.doResolveAllRelations(relatedDocuments.Interface(), fetchedDocuments); err != nil {
 						return err
 					}
+
 				default:
+
 					// the documents reference one related document
 					results := []map[string]interface{}{}
 					if err = manager.GetDB().C(meta.collectionName).Find(bson.M{"_id": bson.M{"$in": documentIds}}).Select(bson.M{field.key: 1, "_id": 1}).All(&results); err != nil && err != mgo.ErrNotFound {
@@ -620,7 +646,7 @@ func (manager *defaultDocumentManager) doResolveAllRelations(documents interface
 					if len(relatedObjectIds) == 0 {
 						continue
 					}
-					relatedMeta, relatedType := manager.metadatas.FindMetadataByCollectionName(field.relation.targetDocument)
+					relatedMeta, relatedType := manager.metadatas.findMetadataByCollectionName(field.relation.targetDocument)
 					if relatedType == nil {
 						return ErrDocumentNotRegistered
 					}
@@ -664,8 +690,8 @@ func (manager *defaultDocumentManager) doResolveRelations(document interface{}, 
 	if Value.Kind() != reflect.Ptr {
 		return ErrNotAPointer
 	}
-	meta, ok := manager.metadatas[reflect.TypeOf(document)]
-	if !ok {
+	meta, err := manager.metadatas.getMetadatas(reflect.TypeOf(document))
+	if err != nil {
 		return ErrDocumentNotRegistered
 	}
 	documentID, err := manager.metadatas.getDocumentID(document)
@@ -685,7 +711,7 @@ func (manager *defaultDocumentManager) doResolveRelations(document interface{}, 
 			switch field.relation.relation {
 			case referenceMany:
 				ids := []interface{}{}
-				relatedMeta, Type := manager.metadatas.FindMetadataByCollectionName(field.relation.targetDocument)
+				relatedMeta, Type := manager.metadatas.findMetadataByCollectionName(field.relation.targetDocument)
 				if Type == nil {
 					return ErrDocumentNotRegistered
 				}
@@ -732,7 +758,7 @@ func (manager *defaultDocumentManager) doResolveRelations(document interface{}, 
 			case referenceOne:
 				switch field.relation.relationMap {
 				case mappedBy:
-					relatedMeta, Type := manager.metadatas.FindMetadataByCollectionName(field.relation.targetDocument)
+					relatedMeta, Type := manager.metadatas.findMetadataByCollectionName(field.relation.targetDocument)
 					if Type == nil {
 						return ErrDocumentNotRegistered
 					}
@@ -780,7 +806,7 @@ func (manager *defaultDocumentManager) doResolveRelations(document interface{}, 
 					}
 					id := documentMap[field.key].(bson.ObjectId)
 
-					relatedMeta, Type := manager.metadatas.FindMetadataByCollectionName(field.relation.targetDocument)
+					relatedMeta, Type := manager.metadatas.findMetadataByCollectionName(field.relation.targetDocument)
 					if Type == nil {
 						return ErrDocumentNotRegistered
 					}
@@ -850,7 +876,7 @@ func (meta metadata) getFieldsWithRelation() (fields []field) {
 type metadatas map[reflect.Type]metadata
 
 // GetMetadatas returns the metada for a given type
-func (metas metadatas) GetMetadatas(Type reflect.Type) (metadata, error) {
+func (metas metadatas) getMetadatas(Type reflect.Type) (metadata, error) {
 	if meta, ok := metas[Type]; !ok {
 		return zeroMetadata, ErrDocumentNotRegistered
 	} else {
@@ -886,7 +912,7 @@ func (metas metadatas) getDocumentID(document interface{}) (id bson.ObjectId, er
 	return Value.Elem().FieldByName(idFields.name).Interface().(bson.ObjectId), nil
 
 }
-func (metas metadatas) FindMetadataByCollectionName(name string) (metadata, reflect.Type) {
+func (metas metadatas) findMetadataByCollectionName(name string) (metadata, reflect.Type) {
 	for Type, meta := range metas {
 		if meta.collectionName == name {
 			return meta, Type
