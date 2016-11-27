@@ -9,6 +9,14 @@ from different collections, mongo takes cares of all the busy work automatically
 making it easy to model complex data. mongo-odm is written in Go.
 
 
+#### requirements
+
+	go 1.7
+	
+#### installation 
+
+	go get github.com/mparaiso/go-tiger/mongo
+
 #### similar projects:
 
 https://github.com/dsmontoya/marango
@@ -17,6 +25,8 @@ https://github.com/maxwellhealth/bongo
 
 #### basic usage
 
+	```go
+	
 	package main 
 	
 	import(
@@ -229,3 +239,5 @@ https://github.com/maxwellhealth/bongo
 		}
 		db.Session.Close()
 	}
+	
+	```
