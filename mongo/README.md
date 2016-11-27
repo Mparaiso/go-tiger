@@ -25,7 +25,7 @@ https://github.com/maxwellhealth/bongo
 
 #### basic usage
 
-	```go
+```go
 	
 	package main 
 	
@@ -240,4 +240,4 @@ https://github.com/maxwellhealth/bongo
 		db.Session.Close()
 	}
 	
-	```
+```
