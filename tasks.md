@@ -29,7 +29,7 @@ funcs
 mongo 
 
 - [x] add branch mongo : complete DocumentManager.resolveAllRelations
-- [H] add support for resolveAllRelations/referenceMany/MappedBy 
+- [x] add support for resolveAllRelations/referenceMany/MappedBy 
 - [H] add support for inversedBy annotation
 - [L] add support for order in mapping
 - [L] add support for specific criteria in mapping

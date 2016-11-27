@@ -2,10 +2,10 @@ mongo-odm
 =========
 
 Package mongo-odm provides an object document mapper, or ODM,
- for mongodb, strongly influenced by Doctrine Mongo ODM.
+ for mongodb and is strongly influenced by Doctrine Mongo ODM.
 
-With mongo-odm, mongodb users no longer need to manually map related documents 
-from different collections, mongo takes cares of all the busy work automatically,
+With mongo-odm, developers no longer need to manually map related documents 
+from different collections, odm takes cares of all the busy work automatically
 making it easy to model complex data. mongo-odm is written in Go.
 
 
@@ -40,26 +40,27 @@ https://github.com/maxwellhealth/bongo
 
 	
 	type Author struct {
-		// ID is the mongo id, needs to be set explicitly
+		// ID is the mongo id. it needs to be set explicitly.
 		ID bson.ObjectId `bson:"_id,omitempty"`
 	
-		// Name is the author's name
-		// unfortunatly mgo driver lowercases mongo keys by default
-		// so always explicitely set the key name to the field name
+		// Name is the author's name.
+		// Unfortunatly mgo driver lowercases mongo keys by default
+		// so always explicitely set the key name.
 		Name string `bson:"Name"`
 	
-		// Articles written by Author , the inverse owning side of the Article/Author relationship
-		// Author document in the db WiLL not reference Articles directly BUT loading an Author from the db
-		// will also fetch Articles with the related Author.
+		// Articles written by Author, the inverse side of the Article/Author relationship
+		// Author document does not reference Articles directly in the db 
+		// but loading an Author will automatically load related articles.
 		Articles []*Article `odm:"referenceMany(targetDocument:Article,mappedBy:Author)"`
 	}
 	
 	type Tag struct {
 		ID   bson.ObjectId `bson:"_id,omitempty"`
+		
 		Name string        `bson:"Name"`
-		// Articles that have the tag.
-		// Although Tag doesn't not hold a reference to articles in the database,
-		// related articles are loaded when Tag is fetched.
+		
+		// loading Tag will automatically load the related articles, but Tag 
+		// document in the db has no reference to Article.
 		Articles []*Article `odm:"referenceMany(targetDocument:Article,mappedBy:Tags)"`
 	}
 	
@@ -73,8 +74,8 @@ https://github.com/maxwellhealth/bongo
 		Author *Author `odm:"referenceOne(targetDocument:Author)"`
 	
 		// Article references many tags.
-		// cascade tells the document manager to automatically persist related Tags when Article is persisted,
-		// it will also automatically remove related tags as well.
+		// cascade:all tells the document manager to persist or deleted related Tags 
+		// when an article is saved or deleted.
 		Tags []*Tag `odm:"referenceMany(targetDocument:Tag,cascade:all)"`
 	}
 	
@@ -93,7 +94,7 @@ https://github.com/maxwellhealth/bongo
 		// create a document manager
 		documentManager := mongo.NewDocumentManager(db)
 	
-		// register the types into the document manager
+		// register types into the document manager
 		if err = documentManager.RegisterMany(map[string]interface{}{
 			"Article": new(Article),
 			"Author":  new(Author),
@@ -110,7 +111,7 @@ https://github.com/maxwellhealth/bongo
 	
 		// plan for saving
 		// we don't need to explicitly persist Tags since
-		// Article type cascade persists tags
+		// Article cascade persists tags
 		documentManager.Persist(author)
 		documentManager.Persist(article1)
 		documentManager.Persist(article2)
@@ -181,15 +182,15 @@ https://github.com/maxwellhealth/bongo
 		}
 		fmt.Println("articles length :", len(articles))
 	
-		// remove a document
+		// remove an article
 		documentManager.Remove(articles[0])
 		if err = documentManager.Flush(); err != nil {
 			log.Println("error removing article", err)
 			return
 		}
-		// since removing an article remove the related tags, 'programming' tag
-		// should not exist in the db
-	
+		// since removing an article automatically remove the related tags, 
+		// 'programming' tag was removed too.
+		
 		tag := new(Tag)
 		if err = documentManager.FindOne(bson.M{"Name": "programming"}, tag); err != mgo.ErrNotFound {
 			log.Printf("%+v\n", tag)
@@ -197,10 +198,12 @@ https://github.com/maxwellhealth/bongo
 			return
 		}
 	
-		// use complex queries
+		// complex queries
 	
+		
+		// query one author, only return his name
+		
 		author = new(Author)
-		// query one document
 		query := documentManager.CreateQuery().
 			Find(bson.M{"Name": "John Doe"}).Select(bson.M{"Name": 1})
 	
@@ -211,7 +214,8 @@ https://github.com/maxwellhealth/bongo
 		fmt.Println("name:", author.Name)
 	
 		authors := []*Author{}
-		// query multiple documents
+		
+		// query multiple documents with limit, offset ordered by Name
 		query = documentManager.CreateQuery().
 			Find(bson.M{"Name": bson.M{"$ne": "Jane Doe"}}).
 			Select(bson.M{"ID": 1, "Name": 1}).
@@ -222,6 +226,7 @@ https://github.com/maxwellhealth/bongo
 			return
 		}
 		fmt.Println("authors:", len(authors))
+		
 		// Output:
 		// author's name : John Doe
 		// number of author's articles : 2
