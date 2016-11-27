@@ -2,15 +2,10 @@ TIGER
 ------
 
 [![GoDoc](https://godoc.org/github.com/Mparaiso/go-tiger?status.png)](https://godoc.org/github.com/Mparaiso/go-tiger)
-
 [![Build Status](https://travis-ci.org/Mparaiso/go-tiger.svg?branch=master)](https://travis-ci.org/Mparaiso/go-tiger)
-
 [![Code Climate](https://codeclimate.com/github/Mparaiso/go-tiger/badges/gpa.svg)](https://codeclimate.com/github/Mparaiso/go-tiger)
-
 [![Test Coverage](https://codeclimate.com/github/Mparaiso/go-tiger/badges/coverage.svg)](https://codeclimate.com/github/Mparaiso/go-tiger/coverage)
-
 [![Issue Count](https://codeclimate.com/github/Mparaiso/go-tiger/badges/issue_count.svg)](https://codeclimate.com/github/Mparaiso/go-tiger)
-
 [![codebeat badge](https://codebeat.co/badges/bff186bc-1b39-4d22-9c07-159844cc1c87)](https://codebeat.co/projects/github-com-mparaiso-go-tiger)
 
 author: mparaiso <mparaiso@online.fr>
