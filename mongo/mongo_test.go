@@ -1,3 +1,17 @@
+//    Copyright (C) 2016  mparaiso <mparaiso@online.fr>
+//
+//    Licensed under the Apache License, Version 2.0 (the "License");
+//    you may not use this file except in compliance with the License.
+//    You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+//    Unless required by applicable law or agreed to in writing, software
+//    distributed under the License is distributed on an "AS IS" BASIS,
+//    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//    See the License for the specific language governing permissions and
+//    limitations under the License.
+
 package mongo_test
 
 import (
@@ -279,30 +293,29 @@ func Example() {
 		return
 	}
 
-	/*
-		This is how documents look like in the database :
+	/* This is how collections now look like :
 
-		Articles :
+	Articles :
 
-			{ 	Title: "MongoDB",
-				_id: ObjectId("5839eccc35db821e2c9bc005"),
-				author: ObjectId("5839eccc35db821e2c9bc003"),
-				tags: [ ObjectId("5839eccc35db821e2c9bc006") ]
-			}
-			{ 	Title: "Go tiger!",
-				_id: ObjectId("5839eccc35db821e2c9bc004"),
-				author: ObjectId("5839eccc35db821e2c9bc003"),
-				tags: [ ObjectId("5839eccc35db821e2c9bc007"), ObjectId("5839eccc35db821e2c9bc006") ]
-			}
+	{ 	Title: "MongoDB",
+		_id: ObjectId("5839eccc35db821e2c9bc005"),
+		author: ObjectId("5839eccc35db821e2c9bc003"),
+		tags: [ ObjectId("5839eccc35db821e2c9bc006") ]
+	}
+	{ 	Title: "Go tiger!",
+		_id: ObjectId("5839eccc35db821e2c9bc004"),
+		author: ObjectId("5839eccc35db821e2c9bc003"),
+		tags: [ ObjectId("5839eccc35db821e2c9bc007"), ObjectId("5839eccc35db821e2c9bc006") ]
+	}
 
-		Authors :
+	Authors :
 
-			{ Name: "John Doe", _id: ObjectId("5839eccc35db821e2c9bc003") }
+	{ Name: "John Doe", _id: ObjectId("5839eccc35db821e2c9bc003") }
 
-		Tags :
+	Tags :
 
-			{ Name: "programming", _id: ObjectId("5839eccc35db821e2c9bc006") }
-			{ Name: "go", _id: ObjectId("5839eccc35db821e2c9bc007") }
+	{ Name: "programming", _id: ObjectId("5839eccc35db821e2c9bc006") }
+	{ Name: "go", _id: ObjectId("5839eccc35db821e2c9bc007") }
 	*/
 
 	// query the database
