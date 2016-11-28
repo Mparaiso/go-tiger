@@ -49,12 +49,12 @@ type User struct {
 	ID    bson.ObjectId `bson:"_id,omitempty"`
 	Name  string
 	Email string
-	Posts []*Post `odm:"referenceMany(targetDocument:Post,cascade:all)"`    // cascade changes on persist AND remove
-	Role  *Role   `odm:"referenceOne(targetDocument:Role,cascade:Persist)"` // cascade changes only on persist
+	Posts []*Post `odm:"referenceMany(targetDocument:Post,cascade:all,storeId:PostIds)"` // cascade changes on persist AND remove
+	Role  *Role   `odm:"referenceOne(targetDocument:Role,cascade:Persist)"`              // cascade changes only on persist
 }
 
 func TestDocumentManager_Persist(t *testing.T) {
-	dm, done := GetDocumentManager(t)
+	dm, done := getDocumentManager(t)
 	defer done()
 	dm.Register("User", new(User))
 	dm.Register("Post", new(Post))
@@ -137,6 +137,36 @@ type Project struct {
 	Client   *Client       `odm:"referenceOne(targetDocument:Client,mappedBy:Projects,load:eager)"`
 }
 
+func TestDocumentManager_Register_StoreIdAnnotation(t *testing.T) {
+
+	type Person struct {
+		ID   bson.ObjectId `bson:"_id"`
+		Name string        `bson:"Name"`
+	}
+	type Family struct {
+		ID        bson.ObjectId   `bson:"_id"`
+		Name      string          `bson:"Name"`
+		Members   []*Person       `odm:"referenceMany(targetDocument:Person,storeId:MemberIDs,cascade:all)"`
+		MemberIDs []bson.ObjectId `bson:"MemberIDs"`
+	}
+	dm, done := getDocumentManager(t)
+	defer done()
+	err := dm.RegisterMany(map[string]interface{}{
+		"Person": new(Person),
+		"Family": new(Family),
+	})
+	test.Fatal(t, err, nil)
+	family := &Family{Name: "Doe", Members: []*Person{{Name: "John"}, {Name: "Jane"}, {Name: "Jack"}}}
+	dm.Persist(family)
+	err = dm.Flush()
+	test.Fatal(t, err, nil)
+	family = new(Family)
+	err = dm.FindOne(bson.M{"Name": "Doe"}, family)
+	test.Fatal(t, err, nil)
+	test.Fatal(t, len(family.MemberIDs), 3)
+
+}
+
 func TestDocumentManager_Register_InvalidAnnotation(t *testing.T) {
 	type City struct {
 		Name string `odm:"invalidAnnotation"`
@@ -147,7 +177,7 @@ func TestDocumentManager_Register_InvalidAnnotation(t *testing.T) {
 }
 
 func TestDocumentManager_FindAll_MappedBy(t *testing.T) {
-	dm, done := GetDocumentManager(t)
+	dm, done := getDocumentManager(t)
 	defer done()
 	err := dm.Register("Employee", new(Employee))
 	test.Fatal(t, err, nil)
@@ -434,20 +464,26 @@ func cleanUp(db *mgo.Database) {
 	db.Session.Close()
 }
 
-func GetDocumentManager(t *testing.T) (dm mongo.DocumentManager, done func()) {
+func getDB(t *testing.T) *mgo.Database {
 	session, err := mgo.Dial(os.Getenv("MONGODB_TEST_SERVER"))
-	test.Fatal(t, err, nil)
-	dm = mongo.NewDocumentManager(session.DB(os.Getenv("MONGODB_TEST_DB")))
-	err = dm.GetDB().DropDatabase()
 	test.Fatal(t, err, nil)
 	if debug == true {
 		mgo.SetLogger(MongoLogger{t})
 		mgo.SetDebug(true)
+	}
+	return session.DB(os.Getenv("MONGODB_TEST_DB"))
+}
+func getDocumentManager(t *testing.T) (dm mongo.DocumentManager, done func()) {
+
+	dm = mongo.NewDocumentManager(getDB(t))
+	err := dm.GetDB().DropDatabase()
+	test.Fatal(t, err, nil)
+	if debug == true {
 		dm.SetLogger(test.NewTestLogger(t))
 	}
 	done = func() {
 		dm.GetDB().DropDatabase()
-		session.Close()
+		dm.GetDB().Session.Close()
 	}
 	return
 }

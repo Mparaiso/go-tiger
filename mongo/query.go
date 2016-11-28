@@ -113,7 +113,7 @@ func (qb *defaultQueryBuilder) All(documents interface{}) error {
 	if err := query.All(documents); err != nil {
 		return err
 	}
-	return qb.documentManager.resolveAllRelations(documents)
+	return qb.documentManager.resolveRelations(documents)
 }
 
 func (qb *defaultQueryBuilder) buildQuery(collectionName string) *mgo.Query {
