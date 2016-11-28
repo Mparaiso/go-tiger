@@ -360,7 +360,7 @@ func (manager *defaultDocumentManager) doPersist(document interface{}) error {
 	Map := manager.structToMap(document)
 	if metadata.hasRelation() {
 		for _, field := range metadata.getFieldsWithRelation() {
-			if field.relation.relationMap != mappedBy {
+			if field.relation.mapped != mappedBy {
 				switch field.relation.relation {
 				case referenceMany:
 					objectIDs := []bson.ObjectId{}
@@ -464,12 +464,12 @@ func (manager *defaultDocumentManager) doResolveAllRelations(documents interface
 		// for each field that has a relation
 		manager.log(fmt.Sprintf("Found %d fields with relation", len(meta.getFieldsWithRelation())))
 		for _, field := range meta.getFieldsWithRelation() {
-			manager.log("\tRelation for field : ", field.name, field.relation.relation, field.relation.targetDocument, field.relation.relationMap, field.relation.relationMapField)
+			manager.log("\tRelation for field : ", field.name, field.relation.relation, field.relation.targetDocument, field.relation.mapped, field.relation.mappedField)
 			switch field.relation.relation {
 
 			case referenceMany:
 
-				switch field.relation.relationMap {
+				switch field.relation.mapped {
 
 				case mappedBy:
 					{ // all relations for referenceMany/mappedBy
@@ -479,7 +479,7 @@ func (manager *defaultDocumentManager) doResolveAllRelations(documents interface
 						if relatedType == nil {
 							return ErrDocumentNotRegistered
 						}
-						relatedField, ok := relatedMetadata.findFieldByFieldName(field.relation.relationMapField)
+						relatedField, ok := relatedMetadata.findField(field.relation.mappedField)
 						if !ok {
 							return ErrFieldNotFound
 						}
@@ -615,7 +615,7 @@ func (manager *defaultDocumentManager) doResolveAllRelations(documents interface
 				}
 			case referenceOne:
 
-				switch field.relation.relationMap {
+				switch field.relation.mapped {
 
 				case mappedBy:
 					{ // all relations for referenceOne/mappedBy
@@ -627,7 +627,7 @@ func (manager *defaultDocumentManager) doResolveAllRelations(documents interface
 						}
 						relatedDocumentMaps := []map[string]interface{}{}
 						// We need the related struct field and the mongodb key of the owning side which holds the reference to the source document
-						relatedField, found := relatedMeta.findFieldByFieldName(field.relation.relationMapField)
+						relatedField, found := relatedMeta.findField(field.relation.mappedField)
 						if !found {
 							return ErrFieldNotFound
 						}
@@ -782,10 +782,10 @@ func (manager *defaultDocumentManager) doResolveRelations(document interface{}, 
 	}
 	if meta.hasRelation() {
 		for _, field := range meta.getFieldsWithRelation() {
-			manager.log("\tRelation for field : ", field.name, field.relation.relation, field.relation.targetDocument, field.relation.relationMap, field.relation.relationMapField)
+			manager.log("\tRelation for field : ", field.name, field.relation.relation, field.relation.targetDocument, field.relation.mapped, field.relation.mappedField)
 			switch field.relation.relation {
 			case referenceMany:
-				switch field.relation.relationMap {
+				switch field.relation.mapped {
 				case mappedBy:
 					{
 						ids := []interface{}{}
@@ -795,8 +795,8 @@ func (manager *defaultDocumentManager) doResolveRelations(document interface{}, 
 						}
 						relatedDocuments := []map[string]interface{}{}
 						mappedCollection := field.relation.targetDocument
-						mappedField := field.relation.relationMapField
-						fieldmetadata, found := relatedMeta.findFieldByFieldName(mappedField)
+						mappedField := field.relation.mappedField
+						fieldmetadata, found := relatedMeta.findField(mappedField)
 						if !found {
 							return ErrMappedFieldNotFound
 						}
@@ -853,7 +853,7 @@ func (manager *defaultDocumentManager) doResolveRelations(document interface{}, 
 					}
 				}
 			case referenceOne:
-				switch field.relation.relationMap {
+				switch field.relation.mapped {
 				case mappedBy:
 					relatedMeta, Type := manager.metadatas.findMetadataByCollectionName(field.relation.targetDocument)
 					if Type == nil {
@@ -864,7 +864,7 @@ func (manager *defaultDocumentManager) doResolveRelations(document interface{}, 
 					for _, document := range fetchedDocuments {
 						documentValue := reflect.ValueOf(document)
 						if documentValue.Type() == Type {
-							if documentValue.Elem().FieldByName(field.relation.relationMapField).Interface().(bson.ObjectId) == documentID {
+							if documentValue.Elem().FieldByName(field.relation.mappedField).Interface().(bson.ObjectId) == documentID {
 								Value.Elem().FieldByName(field.name).Set(documentValue)
 								found = true
 								break
@@ -876,7 +876,7 @@ func (manager *defaultDocumentManager) doResolveRelations(document interface{}, 
 						continue
 					}
 					// we need the related document's key which holds the id of document
-					relatedField, found := relatedMeta.findFieldByFieldName(field.relation.relationMapField)
+					relatedField, found := relatedMeta.findField(field.relation.mappedField)
 					if found == false {
 						return ErrFieldNotFound
 					}
@@ -946,7 +946,7 @@ func (meta metadata) String() string {
 
 }
 
-func (meta metadata) findFieldByFieldName(fieldname string) (f field, found bool) {
+func (meta metadata) findField(fieldname string) (f field, found bool) {
 	for _, field := range meta.fields {
 		if field.name == fieldname {
 			return field, true
@@ -1036,6 +1036,8 @@ func (metas metadatas) findMetadataByCollectionName(name string) (metadata, refl
 }
 
 type field struct {
+	// metadata is the metadata in which the field is defined
+	metadata metadata
 	// mongodb document key
 	key string
 	// struct field name
@@ -1056,20 +1058,39 @@ func (f field) hasRelation() bool {
 	return f.relation != zeroRelation
 }
 
+// relation defines a relationship between the source document
+// and a related document
 type relation struct {
-	relation         relationType
-	targetDocument   string
-	cascade          cascade
-	relationMap      relationMap
-	relationMapField string
+	// relation is the type of relation.
+	// it can either be referenceOne(has one) or referenceMany(has many)
+	relation relationType
+
+	// targetDocument is the related document
+	targetDocument string
+
+	// cascade sets how related datas is automatically persisted or removed
+	// it can be either all, persist or remove
+	cascade cascade
+
+	// mapped is either mappedBy or inversedBy or 0
+	// if mappedBy then the type will not old any reference
+	// to the targetDocument
+	mapped relationMap
+
+	// mappedField is the field on the related document which holds
+	// the source document
+	mappedField string
+
+	// idField is the field that holds the related document id or ids
+	idField string
 }
 
 func (r relation) String() string {
 	if isZero(r) {
 		return "{}"
 	}
-	return fmt.Sprintf("{ relation: '%s', targetDocument: '%s', cascade: '%v', map: '%s', mapField: '%v' } ",
-		r.relation, r.targetDocument, r.cascade, r.relationMap, r.relationMapField)
+	return fmt.Sprintf("{ relation: '%s', targetDocument: '%s', cascade: '%v', mapped: '%s', mappedField: '%v' ,idField '%v' } ",
+		r.relation, r.targetDocument, r.cascade, r.mapped, r.mappedField, r.idField)
 }
 
 type relationMap int
@@ -1268,11 +1289,11 @@ func getTypeMetadatas(value interface{}) (meta metadata, err error) {
 				for _, parameter := range definition.Parameters {
 					switch strings.ToLower(parameter.Key) {
 					case "mappedby":
-						Relation.relationMap = mappedBy
-						Relation.relationMapField = parameter.Value
+						Relation.mapped = mappedBy
+						Relation.mappedField = parameter.Value
 					case "inversedby":
-						Relation.relationMap = inversedBy
-						Relation.relationMapField = parameter.Value
+						Relation.mapped = inversedBy
+						Relation.mappedField = parameter.Value
 					case "targetdocument":
 						Relation.targetDocument = parameter.Value
 					case "cascade":
@@ -1289,6 +1310,7 @@ func getTypeMetadatas(value interface{}) (meta metadata, err error) {
 				}
 			}
 		}
+		MetaField.metadata = meta
 		meta.fields = append(meta.fields, MetaField)
 	}
 	return

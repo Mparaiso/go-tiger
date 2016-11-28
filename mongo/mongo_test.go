@@ -138,7 +138,6 @@ type Project struct {
 }
 
 func TestMappedBy(t *testing.T) {
-
 	dm, done := GetDocumentManager(t)
 	defer done()
 	err := dm.Register("Employee", new(Employee))
