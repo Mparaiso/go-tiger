@@ -92,7 +92,7 @@ func (qb *defaultQueryBuilder) One(document interface{}) error {
 	if err != nil {
 		return ErrDocumentNotRegistered
 	}
-	query := qb.buildQuery(meta.collectionName)
+	query := qb.buildQuery(meta.targetDocument)
 	if err := query.One(document); err != nil {
 		return err
 	}
@@ -109,7 +109,7 @@ func (qb *defaultQueryBuilder) All(documents interface{}) error {
 	if err != nil {
 		return ErrDocumentNotRegistered
 	}
-	query := qb.buildQuery(meta.collectionName)
+	query := qb.buildQuery(meta.targetDocument)
 	if err := query.All(documents); err != nil {
 		return err
 	}

@@ -15,6 +15,7 @@
 package mongo_test
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -25,6 +26,10 @@ import (
 	"github.com/Mparaiso/go-tiger/test"
 	mgo "gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
+)
+
+var (
+	debug = false
 )
 
 type Post struct {
@@ -269,7 +274,7 @@ func Example() {
 
 	// create a document manager
 	documentManager := mongo.NewDocumentManager(db)
-
+	documentManager.SetLogger(test.NewTestLogger(&test.ExampleTester{log.New(os.Stderr, "", log.LstdFlags)}))
 	// register the types into the document manager
 	if err = documentManager.RegisterMany(map[string]interface{}{
 		"Article": new(Article),
@@ -419,19 +424,17 @@ func cleanUp(db *mgo.Database) {
 
 func GetDocumentManager(t *testing.T) (dm mongo.DocumentManager, done func()) {
 	session, err := mgo.Dial(os.Getenv("MONGODB_TEST_SERVER"))
-
 	test.Fatal(t, err, nil)
-	// mgo.SetLogger(MongoLogger{t})
-	// mgo.SetDebug(true)
 	dm = mongo.NewDocumentManager(session.DB(os.Getenv("MONGODB_TEST_DB")))
-	// dm.SetLogger(test.NewTestLogger(t))
-
+	err = dm.GetDB().DropDatabase()
+	test.Fatal(t, err, nil)
+	if debug == true {
+		mgo.SetLogger(MongoLogger{t})
+		mgo.SetDebug(true)
+		dm.SetLogger(test.NewTestLogger(t))
+	}
 	done = func() {
-		session.DB("feedpress_test").C("User").DropCollection()
-		session.DB("feedpress_test").C("Post").DropCollection()
-		session.DB("feedpress_test").C("Role").DropCollection()
-		session.DB("feedpress_test").C("Employee").DropCollection()
-		session.DB("feedpress_test").C("Project").DropCollection()
+		dm.GetDB().DropDatabase()
 		session.Close()
 	}
 	return
@@ -473,4 +476,17 @@ func TestMongo(t *testing.T) {
 	err = collection.FindId(result.ID).One(result1)
 	test.Error(t, err, nil)
 	test.Error(t, result1.ID, result.ID)
+}
+
+// TestMain
+// test options : -debug
+func TestMain(m *testing.M) {
+	type Arguments struct {
+		Debug bool
+	}
+	args := Arguments{}
+	flag.BoolVar(&args.Debug, "debug", false, "run tests in debug mode")
+	flag.Parse()
+	debug = args.Debug
+	m.Run()
 }
