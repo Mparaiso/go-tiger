@@ -191,6 +191,21 @@ func (manager *defaultDocumentManager) Flush() error {
 				return err
 			}
 		case insert, update:
+			metaData, err := manager.metadatas.getMetadatas(reflect.TypeOf(document))
+			if err != nil {
+				return err
+			}
+			// deal with index creation
+			// TODO it should be dealt with once
+			if metaData.hasFieldWithIndex() {
+				for _, index := range metaData.getIndexes() {
+					err = manager.database.C(metaData.targetDocument).EnsureIndex(index)
+					if err != nil {
+						return err
+					}
+				}
+
+			}
 			if err := manager.doPersist(document); err != nil {
 				return err
 			}
@@ -780,8 +795,9 @@ func (manager *defaultDocumentManager) doResolveRelations(documents interface{},
 	return nil
 }
 
-// metadata describes the MongoDB relationships
-// associated with a struct type
+// metadata describes how fields of a struct are
+// persisted in the DB, if they are indexed and
+// their relationships
 type metadata struct {
 	// targetDocument is the collection associated
 	// with the metadata
@@ -810,6 +826,36 @@ func (meta metadata) findField(fieldname string) (f field, found bool) {
 		}
 	}
 	return f, false
+}
+
+// hasFieldWithIndex returns true if a field has an index
+func (meta metadata) hasFieldWithIndex() bool {
+	for _, field := range meta.fields {
+		if field.index == true {
+			return true
+		}
+	}
+	return false
+}
+
+// findFieldsWithIndex returns the fields with an index definition
+func (meta metadata) findFieldsWithIndex() []field {
+	fieldsWithIndex := []field{}
+	for _, field := range meta.fields {
+		if field.index == true {
+			fieldsWithIndex = append(fieldsWithIndex, field)
+		}
+	}
+	return fieldsWithIndex
+}
+
+// getIndexes create a list of indexes from the metadata
+func (meta metadata) getIndexes() []mgo.Index {
+	indexes := []mgo.Index{}
+	for _, field := range meta.findFieldsWithIndex() {
+		indexes = append(indexes, mgo.Index{Key: []string{field.key}, Unique: field.unique})
+	}
+	return indexes
 }
 
 func (meta metadata) findIDField() (f field, found bool) {
@@ -842,6 +888,10 @@ func (meta metadata) getFieldsWithRelation() []field {
 	return fieldsWithRelation
 }
 
+// metadatas is a helper type
+// used when working with a list of metadatas
+// it provides several methods to look up on or extract
+// different informations from the metadatas it lists
 type metadatas map[reflect.Type]metadata
 
 // GetMetadatas returns the metada for a given type
@@ -893,7 +943,10 @@ func (metas metadatas) findMetadataByCollectionName(name string) (metadata, refl
 }
 
 type field struct {
-
+	// index is a index
+	index bool
+	// unique is a unique index
+	unique bool
 	// mongodb document key
 	key string
 	// struct field name
@@ -1077,6 +1130,7 @@ func convertValueToArrayOfValues(value reflect.Value) (arrayOfValues []reflect.V
 	return
 }
 
+// stripID removes the _id key of a map
 func stripID(Map map[string]interface{}) map[string]interface{} {
 	delete(Map, "_id")
 	return Map
@@ -1107,12 +1161,12 @@ func isIterable(value interface{}) bool {
 }
 
 // getTypeMetadatas takes a pointer to struct and returns the metadata
-// for this type or an error if the the struct tag contains invalid
-// information
+// for the struct or an error if the struct tag is invalid.
 func getTypeMetadatas(value interface{}) (meta metadata, err error) {
 	Value := reflect.Indirect(reflect.ValueOf(value))
 	Type := Value.Type()
-	// iterate through struct fields
+	// for each field in struct, read its struct tag and
+	// create a metadata for the field if needed
 	for i := 0; i < Value.NumField(); i++ {
 		Field := Type.Field(i)
 		MetaField := field{name: Field.Name, key: strings.ToLower(Field.Name)}
@@ -1156,6 +1210,14 @@ func getTypeMetadatas(value interface{}) (meta metadata, err error) {
 				meta.idField = Field.Name
 			case "omitempty":
 				MetaField.omitempty = true
+			case "index":
+				MetaField.index = true
+				for _, parameter := range definition.Parameters {
+					switch toLower(parameter.Key) {
+					case "unique":
+						MetaField.unique = true
+					}
+				}
 			case "referencemany", "referenceone":
 				Relation := relation{}
 				switch strings.ToLower(definition.Name) {
@@ -1202,6 +1264,10 @@ func getTypeMetadatas(value interface{}) (meta metadata, err error) {
 				return meta, ErrInvalidAnnotation
 			}
 		}
+		// remove index definition if field has a relation
+		if MetaField.index == true && MetaField.hasRelation() {
+			MetaField.index = false
+		}
 		// use a specific field to store related ids
 		if MetaField.relation.idStorageField != "" {
 
@@ -1213,6 +1279,11 @@ func getTypeMetadatas(value interface{}) (meta metadata, err error) {
 		meta.fields = append(meta.fields, MetaField)
 	}
 	return
+}
+
+// toLower is a shortcurt to strings.ToLower method
+func toLower(s string) string {
+	return strings.ToLower(s)
 }
 
 // resolveKeyForField either returns lowercase version of the name if the field

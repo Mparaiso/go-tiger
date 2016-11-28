@@ -334,6 +334,26 @@ func TestDocumentManager_Register_InvalidAnnotation(t *testing.T) {
 	test.Fatal(t, err, mongo.ErrInvalidAnnotation)
 }
 
+func TestDocumentManager_Register_IndexAnnotation(t *testing.T) {
+	t.Log("Testing index annotation")
+	type Country struct {
+		ID   bson.ObjectId `bson:"_id"`
+		Name string        `bson:"Name" odm:"index(unique:true)"`
+	}
+	dm, done := getDocumentManager(t)
+	defer done()
+	err := dm.Register("Country", new(Country))
+	test.Fatal(t, err, nil)
+	country := &Country{Name: "Sweden"}
+	dm.Persist(country)
+	err = dm.Flush()
+	test.Fatal(t, err, nil)
+	country2 := new(Country)
+	err = dm.FindID(country.ID, country2)
+	test.Fatal(t, err, nil)
+	test.Fatal(t, country2.Name, country.Name)
+}
+
 func TestDocumentManager_FindAll_MappedBy(t *testing.T) {
 	dm, done := getDocumentManager(t)
 	defer done()
