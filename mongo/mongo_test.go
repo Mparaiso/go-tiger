@@ -335,12 +335,12 @@ func TestDocumentManager_Register_InvalidAnnotation(t *testing.T) {
 }
 
 func TestDocumentManager_Register_IndexAnnotation(t *testing.T) {
-	t.Log("Testing index annotation")
 	type Country struct {
 		ID   bson.ObjectId `bson:"_id"`
 		Name string        `bson:"Name" odm:"index(unique:true)"`
 	}
 	dm, done := getDocumentManager(t)
+
 	defer done()
 	err := dm.Register("Country", new(Country))
 	test.Fatal(t, err, nil)
@@ -352,6 +352,10 @@ func TestDocumentManager_Register_IndexAnnotation(t *testing.T) {
 	err = dm.FindID(country.ID, country2)
 	test.Fatal(t, err, nil)
 	test.Fatal(t, country2.Name, country.Name)
+	country3 := &Country{Name: "Sweden"}
+	dm.Persist(country3)
+	err = dm.Flush()
+	test.Fatal(t, mgo.IsDup(err), true, "Error should be a duplicate key error ")
 }
 
 func TestDocumentManager_FindAll_MappedBy(t *testing.T) {
