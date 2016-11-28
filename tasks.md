@@ -29,6 +29,7 @@ funcs
 mongo 
 
 - [x] add branch mongo : complete DocumentManager.resolveAllRelations
+- [x] 4eaf29 added support for eager/lazy loading of related relationships
 - [x] add support for resolveAllRelations/referenceMany/MappedBy 
 - [H] add support for inversedBy annotation
 - [L] add support for order in mapping
