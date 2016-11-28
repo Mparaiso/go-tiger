@@ -1,4 +1,7 @@
 language: go
 
+services:
+    - mongodb
+
 script:
     - go test ./... -race -v 
