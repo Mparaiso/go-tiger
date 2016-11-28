@@ -431,6 +431,8 @@ func (manager *defaultDocumentManager) resolveRelations(document interface{}) er
 
 func (manager *defaultDocumentManager) doResolveAllRelations(documents interface{}, fetchedDocuments map[bson.ObjectId]interface{}) error {
 	manager.log("Resolving all relations for :", reflect.TypeOf(documents))
+	// top is a flag denoting whether it is the first recursive iteration of resolve or not
+	top := len(fetchedDocuments) == 0
 	Pointer := reflect.ValueOf(documents)
 	// expect a pointer
 	if Pointer.Kind() != reflect.Ptr {
@@ -464,6 +466,10 @@ func (manager *defaultDocumentManager) doResolveAllRelations(documents interface
 		// for each field that has a relation
 		manager.log(fmt.Sprintf("Found %d fields with relation", len(meta.getFieldsWithRelation())))
 		for _, field := range meta.getFieldsWithRelation() {
+			// continue if load is lazy and we are resolving relationships of related documents
+			if !top && field.relation.load == lazy {
+				continue
+			}
 			manager.log("\tRelation for field : ", field.name, field.relation.relation, field.relation.targetDocument, field.relation.mapped, field.relation.mappedField)
 			switch field.relation.relation {
 
@@ -760,6 +766,8 @@ func (manager *defaultDocumentManager) doResolveAllRelations(documents interface
 }
 
 func (manager *defaultDocumentManager) doResolveRelations(document interface{}, fetchedDocuments map[bson.ObjectId]interface{}) error {
+	// top is a flag denoting whether it is the first recursive iteration of resolve or not
+	top := len(fetchedDocuments) == 0
 	manager.log("Resolving relation for :", reflect.TypeOf(document))
 	Value := reflect.ValueOf(document)
 	if Value.Kind() != reflect.Ptr {
@@ -782,6 +790,10 @@ func (manager *defaultDocumentManager) doResolveRelations(document interface{}, 
 	}
 	if meta.hasRelation() {
 		for _, field := range meta.getFieldsWithRelation() {
+			// continue if load is lazy and we are resolving relationships of related documents
+			if !top && field.relation.load == lazy {
+				continue
+			}
 			manager.log("\tRelation for field : ", field.name, field.relation.relation, field.relation.targetDocument, field.relation.mapped, field.relation.mappedField)
 			switch field.relation.relation {
 			case referenceMany:
@@ -985,6 +997,21 @@ func (meta metadata) getFieldsWithRelation() []field {
 	return fieldsWithRelation
 }
 
+// getIdStorageForRelation gets the key on which related id or ids
+// should be stored
+func (meta metadata) getIdStorageForRelation(f field) string {
+	if f.relation.idField != "" {
+		if idField, ok := meta.findField(f.relation.idField); ok {
+			return idField.key
+		}
+	}
+	if f.relation.relation == referenceMany {
+		return f.key + "ids"
+	} else {
+		return f.key + "id"
+	}
+}
+
 type metadatas map[reflect.Type]metadata
 
 // GetMetadatas returns the metada for a given type
@@ -1036,8 +1063,7 @@ func (metas metadatas) findMetadataByCollectionName(name string) (metadata, refl
 }
 
 type field struct {
-	// metadata is the metadata in which the field is defined
-	metadata metadata
+
 	// mongodb document key
 	key string
 	// struct field name
@@ -1061,6 +1087,12 @@ func (f field) hasRelation() bool {
 // relation defines a relationship between the source document
 // and a related document
 type relation struct {
+	// load is how the related relations should be loaded.
+	// When a document is fetched, all direct relationships are resolved.
+	// If load is eager then relations on the related documents are loaded as well.
+	// If load is lazy then they are not loaded and ResolveRelation must be called explicitly
+	// load defaults to lazy
+	load load
 	// relation is the type of relation.
 	// it can either be referenceOne(has one) or referenceMany(has many)
 	relation relationType
@@ -1129,6 +1161,16 @@ func (Type relationType) String() string {
 	}
 	return ""
 }
+
+// load defines whether a relationship
+// is lazyly or eagerly fetched when related documents
+// have their own relationships resolved
+type load int
+
+const (
+	lazy load = iota
+	eager
+)
 
 type cascade int
 
@@ -1305,12 +1347,18 @@ func getTypeMetadatas(value interface{}) (meta metadata, err error) {
 						case "all":
 							Relation.cascade = all
 						}
+					case "load":
+						switch strings.ToLower(parameter.Value) {
+						case "eager":
+							Relation.load = eager
+
+						}
 					}
 					MetaField.relation = Relation
 				}
 			}
 		}
-		MetaField.metadata = meta
+
 		meta.fields = append(meta.fields, MetaField)
 	}
 	return
