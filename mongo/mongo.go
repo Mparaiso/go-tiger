@@ -98,6 +98,11 @@ type DocumentManager interface {
 	CreateQuery() queryBuilder
 }
 
+// TODO DocumentManager.ResolveRelations resolve relationships for a document or a collection
+// of documents, or returns an error
+// given a struct T, it expects either *T or *[]*T
+// ResolveRelations(documentOrCollection interface{})error
+
 type defaultDocumentManager struct {
 	database  *mgo.Database
 	metadatas metadatas
@@ -1210,12 +1215,16 @@ func getTypeMetadatas(value interface{}) (meta metadata, err error) {
 	return
 }
 
+// resolveKeyForField either returns lowercase version of the name if the field
+// was found or the key found in a bson struct tag or "" if the field wasn't found
 func resolveKeyForField(Struct reflect.Type, name string) string {
 	if f, ok := Struct.FieldByName(name); ok {
 		tag := f.Tag.Get("bson")
 		parts := strings.Split(tag, ",")
 		if len(parts) > 0 && parts[0] != "" && parts[0] != "-" {
 			return parts[0]
+		} else {
+			return strings.ToLower(f.Name)
 		}
 	}
 	return ""
