@@ -45,8 +45,10 @@ var (
 	ErrNotImpletemented = fmt.Errorf("Error a called method is not implemented")
 	// ErrFieldNotFound : Error a field metada was requested and not found
 	ErrFieldNotFound = fmt.Errorf("Error a field metada was requested and not found ")
-	zeroMetadata     = metadata{}
-	zeroRelation     = relation{}
+	// ErrInvalidAnnotation : An invalid mongo-odm annotation was found , check your odm struct tag
+	ErrInvalidAnnotation = fmt.Errorf("An invalid mongo-odm annotation was found , check your odm struct tag")
+	zeroMetadata         = metadata{}
+	zeroRelation         = relation{}
 	// ZeroObjectID represents a zero value for bson.ObjectId
 	zeroObjectID = reflect.Zero(reflect.TypeOf(bson.NewObjectId())).Interface().(bson.ObjectId)
 )
@@ -1356,6 +1358,8 @@ func getTypeMetadatas(value interface{}) (meta metadata, err error) {
 					}
 					MetaField.relation = Relation
 				}
+			default:
+				return meta, ErrInvalidAnnotation
 			}
 		}
 

@@ -137,7 +137,16 @@ type Project struct {
 	Client   *Client       `odm:"referenceOne(targetDocument:Client,mappedBy:Projects,load:eager)"`
 }
 
-func TestMappedBy(t *testing.T) {
+func TestDocumentManager_Register_InvalidAnnotation(t *testing.T) {
+	type City struct {
+		Name string `odm:"invalidAnnotation"`
+	}
+	dm := mongo.NewDocumentManager(nil)
+	err := dm.Register("City", new(City))
+	test.Fatal(t, err, mongo.ErrInvalidAnnotation)
+}
+
+func TestDocumentManager_FindAll_MappedBy(t *testing.T) {
 	dm, done := GetDocumentManager(t)
 	defer done()
 	err := dm.Register("Employee", new(Employee))
@@ -273,7 +282,11 @@ func Example() {
 
 	// create a document manager
 	documentManager := mongo.NewDocumentManager(db)
-	documentManager.SetLogger(test.NewTestLogger(&test.ExampleTester{log.New(os.Stderr, "", log.LstdFlags)}))
+
+	if debug == true {
+		documentManager.SetLogger(test.NewTestLogger(&test.ExampleTester{log.New(os.Stderr, "", log.LstdFlags)}))
+	}
+
 	// register the types into the document manager
 	if err = documentManager.RegisterMany(map[string]interface{}{
 		"Article": new(Article),
