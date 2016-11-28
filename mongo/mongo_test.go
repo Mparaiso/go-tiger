@@ -127,14 +127,14 @@ type Client struct {
 type Employee struct {
 	ID       bson.ObjectId `bson:"_id,omitempty"`
 	Name     string        `bson:"Name"`
-	Projects []*Project    `odm:"referenceMany(targetDocument:Project,mappedBy:Employee)"`
+	Projects []*Project    `odm:"referenceMany(targetDocument:Project,mappedBy:Employee,load:eager)"`
 }
 
 type Project struct {
 	ID       bson.ObjectId `bson:"_id,omitempty"`
 	Title    string        `bson:"Title"`
-	Employee *Employee     `bson:"Employee" odm:"referenceOne(targetDocument:Employee)"`
-	Client   *Client       `odm:"referenceOne(targetDocument:Client,mappedBy:Projects)"`
+	Employee *Employee     `odm:"referenceOne(targetDocument:Employee,load:eager)"`
+	Client   *Client       `odm:"referenceOne(targetDocument:Client,mappedBy:Projects,load:eager)"`
 }
 
 func TestMappedBy(t *testing.T) {
