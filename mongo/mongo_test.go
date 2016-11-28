@@ -41,12 +41,15 @@ func Example() {
 		// Name is the author's name
 		// unfortunatly mgo driver lowercases mongo keys by default
 		// so always explicitely set the key name to the field name
-		Name string `bson:"Name"`
+		//
+		// index(unique:true) creates an unix index on key Name, so
+		// there is no duplicates for that key
+		Name string `bson:"Name" odm:"index(unique:true)"`
 	}
 
 	type Tag struct {
 		ID   bson.ObjectId `bson:"_id,omitempty"`
-		Name string        `bson:"Name"`
+		Name string        `bson:"Name" odm:"index"`
 	}
 
 	type Article struct {
