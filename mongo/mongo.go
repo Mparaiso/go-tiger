@@ -45,8 +45,10 @@ var (
 	ErrNotImpletemented = fmt.Errorf("Error a called method is not implemented")
 	// ErrFieldNotFound : Error a field metada was requested and not found
 	ErrFieldNotFound = fmt.Errorf("Error a field metada was requested and not found ")
-	zeroMetadata     = metadata{}
-	zeroRelation     = relation{}
+	// ErrInvalidAnnotation : An invalid mongo-odm annotation was found , check your odm struct tag
+	ErrInvalidAnnotation = fmt.Errorf("An invalid mongo-odm annotation was found , check your odm struct tag")
+	zeroMetadata         = metadata{}
+	zeroRelation         = relation{}
 	// ZeroObjectID represents a zero value for bson.ObjectId
 	zeroObjectID = reflect.Zero(reflect.TypeOf(bson.NewObjectId())).Interface().(bson.ObjectId)
 )
@@ -208,7 +210,7 @@ func (manager *defaultDocumentManager) FindBy(query interface{}, documents inter
 	if err := manager.database.C(meta.targetDocument).Find(query).All(documents); err != nil {
 		return err
 	}
-	return manager.resolveAllRelations(documents)
+	return manager.resolveRelations(documents)
 }
 
 func (manager *defaultDocumentManager) FindAll(documents interface{}) error {
@@ -227,7 +229,7 @@ func (manager *defaultDocumentManager) FindAll(documents interface{}) error {
 	if err := manager.database.C(meta.targetDocument).Find(nil).All(documents); err != nil {
 		return err
 	}
-	return manager.resolveAllRelations(documents)
+	return manager.resolveRelations(documents)
 }
 
 func (manager *defaultDocumentManager) FindOne(query interface{}, document interface{}) error {
@@ -418,18 +420,26 @@ func (manager *defaultDocumentManager) doPersist(document interface{}) error {
 	return nil
 }
 
-func (manager *defaultDocumentManager) resolveAllRelations(documents interface{}) error {
+func (manager *defaultDocumentManager) resolveRelations(documents interface{}) error {
 	// this operation is recursive so we need to keep track of the documents than have already
 	// been fetched from the DB by their (unique) objectIDs.
 	// the relations are resolved recursively. When no relation needs to be resolved or if an error occurs, return.
-	return manager.doResolveAllRelations(documents, map[bson.ObjectId]interface{}{})
+
+	// if documents is a pointer to struct instead of a slice then
+	// creates a slice of type documents and add document to documents
+	if reflect.TypeOf(documents).Kind() == reflect.Ptr {
+		if !(reflect.TypeOf(documents).Elem().Kind() == reflect.Array || reflect.TypeOf(documents).Elem().Kind() == reflect.Slice) {
+			doc := documents
+			slice := reflect.New(reflect.SliceOf(reflect.TypeOf(doc)))
+			sliceContent := reflect.Append(slice.Elem(), reflect.ValueOf(doc))
+			slice.Elem().Set(sliceContent)
+			documents = slice.Interface()
+		}
+	}
+	return manager.doResolveRelations(documents, map[bson.ObjectId]interface{}{})
 }
 
-func (manager *defaultDocumentManager) resolveRelations(document interface{}) error {
-	return manager.doResolveRelations(document, map[bson.ObjectId]interface{}{})
-}
-
-func (manager *defaultDocumentManager) doResolveAllRelations(documents interface{}, fetchedDocuments map[bson.ObjectId]interface{}) error {
+func (manager *defaultDocumentManager) doResolveRelations(documents interface{}, fetchedDocuments map[bson.ObjectId]interface{}) error {
 	manager.log("Resolving all relations for :", reflect.TypeOf(documents))
 	// top is a flag denoting whether it is the first recursive iteration of resolve or not
 	top := len(fetchedDocuments) == 0
@@ -545,7 +555,7 @@ func (manager *defaultDocumentManager) doResolveAllRelations(documents interface
 							}
 						}
 						// resolve relations for the related documents we just fetched
-						if err = manager.doResolveAllRelations(relatedCollection.Interface(), fetchedDocuments); err != nil {
+						if err = manager.doResolveRelations(relatedCollection.Interface(), fetchedDocuments); err != nil {
 							return err
 						}
 					}
@@ -614,7 +624,7 @@ func (manager *defaultDocumentManager) doResolveAllRelations(documents interface
 							}
 						}
 						// lets resolve the relations of the related documents
-						if err = manager.doResolveAllRelations(relatedDocumentValues.Interface(), fetchedDocuments); err != nil {
+						if err = manager.doResolveRelations(relatedDocumentValues.Interface(), fetchedDocuments); err != nil {
 							return err
 						}
 					}
@@ -691,7 +701,7 @@ func (manager *defaultDocumentManager) doResolveAllRelations(documents interface
 							value.Elem().FieldByName(field.name).Set(relatedDocumentsMappedByDocumentID[documentID])
 						}
 						// let's resolve the possible relations in the related documents we just fetched
-						if err = manager.doResolveAllRelations(relatedDocuments.Interface(), fetchedDocuments); err != nil {
+						if err = manager.doResolveRelations(relatedDocuments.Interface(), fetchedDocuments); err != nil {
 							return err
 						}
 					}
@@ -754,177 +764,7 @@ func (manager *defaultDocumentManager) doResolveAllRelations(documents interface
 							value.Elem().FieldByName(field.name).Set(relatedResult)
 						}
 						// lets resolve the relations of the related documents
-						if err = manager.doResolveAllRelations(relatedDocumentValues.Interface(), fetchedDocuments); err != nil {
-							return err
-						}
-					}
-				}
-			}
-		}
-	}
-	return nil
-}
-
-func (manager *defaultDocumentManager) doResolveRelations(document interface{}, fetchedDocuments map[bson.ObjectId]interface{}) error {
-	// top is a flag denoting whether it is the first recursive iteration of resolve or not
-	top := len(fetchedDocuments) == 0
-	manager.log("Resolving relation for :", reflect.TypeOf(document))
-	Value := reflect.ValueOf(document)
-	if Value.Kind() != reflect.Ptr {
-		return ErrNotAPointer
-	}
-	meta, err := manager.metadatas.getMetadatas(reflect.TypeOf(document))
-	if err != nil {
-		return ErrDocumentNotRegistered
-	}
-	documentID, err := manager.metadatas.getDocumentID(document)
-	if err != nil {
-		return err
-	}
-	if _, ok := fetchedDocuments[documentID]; ok {
-		// document has already been fetched ! just return
-		return nil
-	} else {
-		// add to the already fetched document list
-		fetchedDocuments[documentID] = document
-	}
-	if meta.hasRelation() {
-		for _, field := range meta.getFieldsWithRelation() {
-			// continue if load is lazy and we are resolving relationships of related documents
-			if !top && field.relation.load == lazy {
-				continue
-			}
-			manager.log("\tRelation for field : ", field.name, field.relation.relation, field.relation.targetDocument, field.relation.mapped, field.relation.mappedField)
-			switch field.relation.relation {
-			case referenceMany:
-				switch field.relation.mapped {
-				case mappedBy:
-					{
-						ids := []interface{}{}
-						relatedMeta, Type := manager.metadatas.findMetadataByCollectionName(field.relation.targetDocument)
-						if Type == nil {
-							return ErrDocumentNotRegistered
-						}
-						relatedDocuments := []map[string]interface{}{}
-						mappedCollection := field.relation.targetDocument
-						mappedField := field.relation.mappedField
-						fieldmetadata, found := relatedMeta.findField(mappedField)
-						if !found {
-							return ErrMappedFieldNotFound
-						}
-						if err := manager.GetDB().C(mappedCollection).Find(bson.M{fieldmetadata.key: documentID}).Select(bson.M{"_id": 1}).All(&relatedDocuments); err != nil && err != mgo.ErrNotFound {
-							return err
-						} else if err == mgo.ErrNotFound {
-							continue
-						}
-						for _, relatedDocument := range relatedDocuments {
-							ids = append(ids, relatedDocument["_id"])
-						}
-						// if no related document, continue
-						if len(ids) == 0 {
-							continue
-						}
-
-						relatedResults := reflect.New(reflect.SliceOf(Type))
-						if err = manager.GetDB().C(relatedMeta.targetDocument).Find(bson.M{"_id": bson.M{"$in": ids}}).All(relatedResults.Interface()); err != mgo.ErrNotFound && err != nil {
-							return err
-						}
-						Value.Elem().FieldByName(field.name).Set(relatedResults.Elem())
-						if err = manager.doResolveAllRelations(relatedResults.Interface(), fetchedDocuments); err != nil {
-							return err
-						}
-					}
-				default:
-					{
-						ids := []interface{}{}
-						relatedMeta, Type := manager.metadatas.findMetadataByCollectionName(field.relation.targetDocument)
-						if Type == nil {
-							return ErrDocumentNotRegistered
-						}
-						fetchedIds := map[string]interface{}{}
-						if err = manager.GetDB().C(meta.targetDocument).FindId(documentID).Select(bson.M{field.key: 1}).One(&fetchedIds); err != nil {
-							return err
-						}
-						if _, ok := fetchedIds[field.key]; !ok {
-							continue
-						}
-						ids = fetchedIds[field.key].([]interface{})
-						// if no related document, continue
-						if len(ids) == 0 {
-							continue
-						}
-
-						relatedResults := reflect.New(reflect.SliceOf(Type))
-						if err = manager.GetDB().C(relatedMeta.targetDocument).Find(bson.M{"_id": bson.M{"$in": ids}}).All(relatedResults.Interface()); err != mgo.ErrNotFound && err != nil {
-							return err
-						}
-						Value.Elem().FieldByName(field.name).Set(relatedResults.Elem())
-						if err = manager.doResolveAllRelations(relatedResults.Interface(), fetchedDocuments); err != nil {
-							return err
-						}
-					}
-				}
-			case referenceOne:
-				switch field.relation.mapped {
-				case mappedBy:
-					relatedMeta, Type := manager.metadatas.findMetadataByCollectionName(field.relation.targetDocument)
-					if Type == nil {
-						return ErrDocumentNotRegistered
-					}
-					// let's try to find the related document in the fetchedDocuments
-					found := false
-					for _, document := range fetchedDocuments {
-						documentValue := reflect.ValueOf(document)
-						if documentValue.Type() == Type {
-							if documentValue.Elem().FieldByName(field.relation.mappedField).Interface().(bson.ObjectId) == documentID {
-								Value.Elem().FieldByName(field.name).Set(documentValue)
-								found = true
-								break
-							}
-						}
-					}
-					// we found the related document, continue with the next relation
-					if found == true {
-						continue
-					}
-					// we need the related document's key which holds the id of document
-					relatedField, found := relatedMeta.findField(field.relation.mappedField)
-					if found == false {
-						return ErrFieldNotFound
-					}
-					relatedDocument := reflect.New(Type.Elem())
-					// let's search for the related document by the source documentId
-					if err = manager.GetDB().C(relatedMeta.targetDocument).Find(bson.M{relatedField.key: documentID}).One(relatedDocument.Interface()); err != mgo.ErrNotFound && err != nil {
-						return err
-					} else if err != mgo.ErrNotFound {
-						Value.Elem().FieldByName(field.name).Set(relatedDocument)
-						if err = manager.doResolveRelations(relatedDocument.Interface(), fetchedDocuments); err != nil {
-							return err
-						}
-					}
-				default:
-					// we need to requery the main document to get the id of the related document
-					documentMap := map[string]interface{}{}
-					err = manager.GetDB().C(meta.targetDocument).FindId(documentID).Select(bson.M{field.key: 1}).One(&documentMap)
-					if err != nil {
-						return err
-					}
-					if documentMap[field.key] == nil {
-						// no referenced document was found
-						continue
-					}
-					id := documentMap[field.key].(bson.ObjectId)
-
-					relatedMeta, Type := manager.metadatas.findMetadataByCollectionName(field.relation.targetDocument)
-					if Type == nil {
-						return ErrDocumentNotRegistered
-					}
-					relatedDocument := reflect.New(Type.Elem())
-					if err = manager.GetDB().C(relatedMeta.targetDocument).FindId(id).One(relatedDocument.Interface()); err != mgo.ErrNotFound && err != nil {
-						return err
-					} else if err != mgo.ErrNotFound {
-						Value.Elem().FieldByName(field.name).Set(relatedDocument)
-						if err = manager.doResolveRelations(relatedDocument.Interface(), fetchedDocuments); err != nil {
+						if err = manager.doResolveRelations(relatedDocumentValues.Interface(), fetchedDocuments); err != nil {
 							return err
 						}
 					}
@@ -995,21 +835,6 @@ func (meta metadata) getFieldsWithRelation() []field {
 		}
 	}
 	return fieldsWithRelation
-}
-
-// getIdStorageForRelation gets the key on which related id or ids
-// should be stored
-func (meta metadata) getIdStorageForRelation(f field) string {
-	if f.relation.idField != "" {
-		if idField, ok := meta.findField(f.relation.idField); ok {
-			return idField.key
-		}
-	}
-	if f.relation.relation == referenceMany {
-		return f.key + "ids"
-	} else {
-		return f.key + "id"
-	}
 }
 
 type metadatas map[reflect.Type]metadata
@@ -1114,7 +939,7 @@ type relation struct {
 	mappedField string
 
 	// idField is the field that holds the related document id or ids
-	idField string
+	idStorageField string
 }
 
 func (r relation) String() string {
@@ -1122,7 +947,7 @@ func (r relation) String() string {
 		return "{}"
 	}
 	return fmt.Sprintf("{ relation: '%s', targetDocument: '%s', cascade: '%v', mapped: '%s', mappedField: '%v' ,idField '%v' } ",
-		r.relation, r.targetDocument, r.cascade, r.mapped, r.mappedField, r.idField)
+		r.relation, r.targetDocument, r.cascade, r.mapped, r.mappedField, r.idStorageField)
 }
 
 type relationMap int
@@ -1286,6 +1111,7 @@ func getTypeMetadatas(value interface{}) (meta metadata, err error) {
 	for i := 0; i < Value.NumField(); i++ {
 		Field := Type.Field(i)
 		MetaField := field{name: Field.Name, key: strings.ToLower(Field.Name)}
+		// check bson struct tag and extract the document key
 		Tag := Field.Tag.Get("bson")
 		parts := strings.Split(Tag, ",")
 		if len(parts) > 0 {
@@ -1294,6 +1120,11 @@ func getTypeMetadatas(value interface{}) (meta metadata, err error) {
 				if key == "_id" {
 					meta.idField = Field.Name
 					meta.idKey = "_id"
+				}
+				// ignore the field and continue
+				if key == "-" {
+					MetaField.ignore = true
+					continue
 				}
 			}
 		}
@@ -1325,8 +1156,10 @@ func getTypeMetadatas(value interface{}) (meta metadata, err error) {
 				switch strings.ToLower(definition.Name) {
 				case "referencemany":
 					Relation.relation = referenceMany
+					MetaField.key = "odm:" + strings.ToLower(Field.Name) + "ids"
 				case "referenceone":
 					Relation.relation = referenceOne
+					MetaField.key = "odm:" + strings.ToLower(Field.Name) + "id"
 				}
 				for _, parameter := range definition.Parameters {
 					switch strings.ToLower(parameter.Key) {
@@ -1347,21 +1180,45 @@ func getTypeMetadatas(value interface{}) (meta metadata, err error) {
 						case "all":
 							Relation.cascade = all
 						}
+					case "storeid":
+						Relation.idStorageField = parameter.Value
 					case "load":
 						switch strings.ToLower(parameter.Value) {
 						case "eager":
 							Relation.load = eager
 
 						}
+					default:
+						return meta, ErrInvalidAnnotation
 					}
 					MetaField.relation = Relation
 				}
+			default:
+				return meta, ErrInvalidAnnotation
 			}
 		}
+		// use a specific field to store related ids
+		if MetaField.relation.idStorageField != "" {
 
+			if key := resolveKeyForField(Type, MetaField.relation.idStorageField); key != "" {
+
+				MetaField.key = key
+			}
+		}
 		meta.fields = append(meta.fields, MetaField)
 	}
 	return
+}
+
+func resolveKeyForField(Struct reflect.Type, name string) string {
+	if f, ok := Struct.FieldByName(name); ok {
+		tag := f.Tag.Get("bson")
+		parts := strings.Split(tag, ",")
+		if len(parts) > 0 && parts[0] != "" && parts[0] != "-" {
+			return parts[0]
+		}
+	}
+	return ""
 }
 
 func metadataToString(meta metadata) string {
