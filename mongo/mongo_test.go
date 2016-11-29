@@ -29,7 +29,8 @@ import (
 )
 
 var (
-	debug = false
+	debug   = false
+	verbose = false
 )
 
 func Example() {
@@ -208,10 +209,32 @@ type Role struct {
 
 type User struct {
 	ID    bson.ObjectId `bson:"_id,omitempty"`
-	Name  string
-	Email string
-	Posts []*Post `odm:"referenceMany(targetDocument:Post,cascade:all,storeId:PostIds)"` // cascade changes on persist AND remove
-	Role  *Role   `odm:"referenceOne(targetDocument:Role,cascade:Persist)"`              // cascade changes only on persist
+	Name  string        `bson:"Name"`
+	Email string        `bson:"Email"`
+	Posts []*Post       `odm:"referenceMany(targetDocument:Post,cascade:all,storeId:PostIds)"` // cascade changes on persist AND remove
+	Role  *Role         `odm:"referenceOne(targetDocument:Role,cascade:Persist)"`              // cascade changes only on persist
+}
+
+func TestDocumentManager_CreateQuery_Sort(t *testing.T) {
+	dm, done := getDocumentManager(t)
+	defer done()
+	err := dm.RegisterMany(map[string]interface{}{
+		"Post": new(Post),
+		"Role": new(Role),
+		"User": new(User),
+	})
+	test.Fatal(t, err, nil)
+	users := []*User{{Name: "John Doe"}, {Name: "Jane Doe"}, {Name: "Jack Doe"}}
+	for _, u := range users {
+		dm.Persist(u)
+	}
+	err = dm.Flush()
+	test.Fatal(t, err, nil)
+	users = []*User{}
+	err = dm.CreateQuery().Sort("Name").All(&users)
+	test.Fatal(t, err, nil)
+	test.Fatal(t, len(users), 3)
+	test.Fatal(t, users[0].Name, "Jack Doe")
 }
 
 func TestDocumentManager_Persist(t *testing.T) {
@@ -236,7 +259,7 @@ func TestDocumentManager_Persist(t *testing.T) {
 
 func SubTestDocumentManager_FindOne(dm mongo.DocumentManager, t *testing.T) bson.ObjectId {
 	user := new(User)
-	err := dm.FindOne(bson.M{"name": "John"}, user)
+	err := dm.FindOne(bson.M{"Name": "John"}, user)
 	test.Fatal(t, err, nil)
 	test.Fatal(t, user.Role != nil, true)
 	test.Fatal(t, user.Role.Title, "Editor")
@@ -282,7 +305,7 @@ func SubTestDocumentManager_Remove(id bson.ObjectId, dm mongo.DocumentManager, t
 type Client struct {
 	ID       bson.ObjectId `bson:"_id,omitempty"`
 	Name     string        `bson:"Name"`
-	Projects []*Project    `bson:"Projects,omitempty" odm:"referenceMany(targetDocument:Project)"`
+	Projects []*Project    `odm:"referenceMany(targetDocument:Project)"`
 }
 
 type Employee struct {
@@ -298,8 +321,62 @@ type Project struct {
 	Client   *Client       `odm:"referenceOne(targetDocument:Client,mappedBy:Projects,load:eager)"`
 }
 
-func TestDocumentManager_Register_StoreIdAnnotation(t *testing.T) {
+func TestDocumentManager_CreateQuery_Limit(t *testing.T) {
+	dm, done := getDocumentManager(t)
+	defer done()
+	err := dm.RegisterMany(map[string]interface{}{
+		"Client":   new(Client),
+		"Employee": new(Employee),
+		"Project":  new(Project),
+	})
+	test.Fatal(t, err, nil)
+	employees := []*Employee{{Name: "John Doe"}, {Name: "Jack Doe"}, {Name: "Jane Doe"}, {Name: "Ann Doe"}}
+	for _, e := range employees {
+		dm.Persist(e)
+	}
+	err = dm.Flush()
+	test.Fatal(t, err, nil)
+	employees = []*Employee{}
+	err = dm.CreateQuery().Limit(2).Skip(1).Sort("Name").All(&employees)
+	test.Fatal(t, err, nil)
+	test.Fatal(t, len(employees), 2)
+	test.Fatal(t, employees[0].Name, "Jack Doe")
+}
 
+func TestDocumentManager_CreateQuery_Select(t *testing.T) {
+	t.Log("QueryBuilder.Select should also affect which relations are resolved")
+	dm, done := getDocumentManager(t)
+	defer done()
+	err := dm.RegisterMany(map[string]interface{}{
+		"Client":   new(Client),
+		"Employee": new(Employee),
+		"Project":  new(Project),
+	})
+	test.Fatal(t, err, nil)
+	client := &Client{Name: "Example"}
+	employee := &Employee{Name: "John Doe"}
+	project := &Project{Title: "Project", Employee: employee}
+	client.Projects = append(client.Projects, project)
+	dm.Persist(client)
+	dm.Persist(employee)
+	dm.Persist(project)
+	err = dm.Flush()
+	test.Fatal(t, err, nil)
+	projects := []*Project{}
+	err = dm.CreateQuery().Select(bson.M{"Client": 1}).All(&projects)
+	test.Fatal(t, err, nil)
+	test.Fatal(t, projects[0].Employee == nil, true)
+	test.Fatal(t, projects[0].Client.Name, "Example")
+	client = new(Client)
+	err = dm.CreateQuery().Select(bson.M{"Name": 1}).One(client)
+	test.Fatal(t, err, nil)
+	test.Fatal(t, len(client.Projects), 0)
+	err = dm.FindID(client.ID, client)
+	test.Fatal(t, err, nil)
+	test.Fatal(t, len(client.Projects), 1)
+}
+
+func TestDocumentManager_Register_StoreIdAnnotation(t *testing.T) {
 	type Person struct {
 		ID   bson.ObjectId `bson:"_id"`
 		Name string        `bson:"Name"`
@@ -325,7 +402,6 @@ func TestDocumentManager_Register_StoreIdAnnotation(t *testing.T) {
 	err = dm.FindOne(bson.M{"Name": "Doe"}, family)
 	test.Fatal(t, err, nil)
 	test.Fatal(t, len(family.MemberIDs), 3)
-
 }
 
 func TestDocumentManager_Register_InvalidAnnotation(t *testing.T) {
@@ -407,7 +483,7 @@ func cleanUp(db *mgo.Database) {
 func getDB(t *testing.T) *mgo.Database {
 	session, err := mgo.Dial(os.Getenv("MONGODB_TEST_SERVER"))
 	test.Fatal(t, err, nil)
-	if debug == true {
+	if verbose == true {
 		mgo.SetLogger(MongoLogger{t})
 		mgo.SetDebug(true)
 	}
@@ -419,7 +495,7 @@ func getDocumentManager(t *testing.T) (dm mongo.DocumentManager, done func()) {
 	dm = mongo.NewDocumentManager(getDB(t))
 	err := dm.GetDB().DropDatabase()
 	test.Fatal(t, err, nil)
-	if debug == true {
+	if debug == true || verbose == true {
 		dm.SetLogger(test.NewTestLogger(t))
 	}
 	done = func() {
@@ -468,14 +544,17 @@ func TestMongo(t *testing.T) {
 }
 
 // TestMain
-// test options : -debug
+// test options : -debug -verbose
 func TestMain(m *testing.M) {
 	type Arguments struct {
-		Debug bool
+		Debug   bool
+		Verbose bool
 	}
 	args := Arguments{}
 	flag.BoolVar(&args.Debug, "debug", false, "run tests in debug mode")
+	flag.BoolVar(&args.Verbose, "verbose", false, "tests are even more verbose than in debug mode!")
 	flag.Parse()
 	debug = args.Debug
+	verbose = args.Verbose
 	m.Run()
 }

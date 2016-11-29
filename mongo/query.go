@@ -18,11 +18,15 @@ import (
 	"reflect"
 
 	"gopkg.in/mgo.v2"
+	"gopkg.in/mgo.v2/bson"
 )
 
 // QueryBuilder builds complex queries
 // managed by the document manager
 type queryBuilder interface {
+	// Find queries the collection with a mongo query
+	// @param query map[string]interface{} | bson.M | bson.D
+	// @see https://docs.mongodb.com/manual/reference/operator/query/#query-selectors
 	Find(query interface{}) queryBuilder
 
 	// Sort asks the database to order returned documents according to the
@@ -38,15 +42,21 @@ type queryBuilder interface {
 
 	// Select enables selecting which fields should be retrieved for the results
 	// found.
+	// @param query map[string]interface{} | bson.M
 	// @see http://www.mongodb.org/display/DOCS/Retrieving+a+Subset+of+Fields
 	Select(query interface{}) queryBuilder
 
+	// Count returns the total number of documents in the result set.
+	Count(targetDocument string) (int, error)
+
 	// One assigns one document or returns an error
 	// it expects a struct pointer
+	// @param document *T
 	One(document interface{}) error
 
 	// All assigns multiple documents in a slice or returns an error.
 	// It expects a pointer to a slice of struct pointers
+	// @param documents *[]*T
 	All(documents interface{}) error
 }
 
@@ -96,10 +106,19 @@ func (qb *defaultQueryBuilder) One(document interface{}) error {
 	if err := query.One(document); err != nil {
 		return err
 	}
-	return qb.documentManager.resolveRelations(document)
+	fields := []string{}
+	if qb.selection != nil {
+		fields = qb.buildFieldListFromProjection(qb.selection)
+	}
+	return qb.documentManager.resolveRelations(document, fields...)
 }
 
+func (qb *defaultQueryBuilder) Count(targetDocument string) (int, error) {
+	q := qb.buildQuery(targetDocument)
+	return q.Count()
+}
 func (qb *defaultQueryBuilder) All(documents interface{}) error {
+
 	if value := reflect.ValueOf(documents); value.Kind() != reflect.Ptr {
 		return ErrNotAPointer
 	} else if kind := value.Elem().Kind(); kind != reflect.Array && kind != reflect.Slice {
@@ -113,7 +132,38 @@ func (qb *defaultQueryBuilder) All(documents interface{}) error {
 	if err := query.All(documents); err != nil {
 		return err
 	}
-	return qb.documentManager.resolveRelations(documents)
+	fields := []string{}
+	if qb.selection != nil {
+		fields = qb.buildFieldListFromProjection(qb.selection)
+	}
+	return qb.documentManager.resolveRelations(documents, fields...)
+}
+
+func (qb *defaultQueryBuilder) buildFieldListFromProjection(projection interface{}) []string {
+	fields := []string{}
+	switch p := projection.(type) {
+	case map[string]interface{}:
+		for key, value := range p {
+			if value == 1 || value == true {
+				fields = append(fields, key)
+			}
+		}
+	case bson.M:
+		for key, value := range p {
+			if value == 1 || value == true {
+				fields = append(fields, key)
+			}
+		}
+	default:
+		if p, ok := projection.(map[string]interface{}); ok {
+			for key, value := range p {
+				if value == 1 || value == true {
+					fields = append(fields, key)
+				}
+			}
+		}
+	}
+	return fields
 }
 
 func (qb *defaultQueryBuilder) buildQuery(collectionName string) *mgo.Query {
@@ -128,6 +178,8 @@ func (qb *defaultQueryBuilder) buildQuery(collectionName string) *mgo.Query {
 		q = q.Sort(qb.order...)
 	}
 	if qb.selection != nil {
+		// always put the id key in the results !
+		reflect.ValueOf(qb.selection).SetMapIndex(reflect.ValueOf("_id"), reflect.ValueOf(1))
 		q = q.Select(qb.selection)
 	}
 

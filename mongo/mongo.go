@@ -440,7 +440,7 @@ func (manager *defaultDocumentManager) doPersist(document interface{}) error {
 	return nil
 }
 
-func (manager *defaultDocumentManager) resolveRelations(documents interface{}) error {
+func (manager *defaultDocumentManager) resolveRelations(documents interface{}, selectedFields ...string) error {
 	// this operation is recursive so we need to keep track of the documents than have already
 	// been fetched from the DB by their (unique) objectIDs.
 	// the relations are resolved recursively. When no relation needs to be resolved or if an error occurs, return.
@@ -456,10 +456,10 @@ func (manager *defaultDocumentManager) resolveRelations(documents interface{}) e
 			documents = slice.Interface()
 		}
 	}
-	return manager.doResolveRelations(documents, map[bson.ObjectId]interface{}{})
+	return manager.doResolveRelations(documents, map[bson.ObjectId]interface{}{}, selectedFields...)
 }
 
-func (manager *defaultDocumentManager) doResolveRelations(documents interface{}, fetchedDocuments map[bson.ObjectId]interface{}) error {
+func (manager *defaultDocumentManager) doResolveRelations(documents interface{}, fetchedDocuments map[bson.ObjectId]interface{}, selectedFields ...string) error {
 	manager.log("Resolving all relations for :", reflect.TypeOf(documents))
 	// top is a flag denoting whether it is the first recursive iteration of resolve or not
 	top := len(fetchedDocuments) == 0
@@ -496,7 +496,12 @@ func (manager *defaultDocumentManager) doResolveRelations(documents interface{},
 		// for each field that has a relation
 		manager.log(fmt.Sprintf("Found %d fields with relation", len(meta.getFieldsWithRelation())))
 		for _, field := range meta.getFieldsWithRelation() {
-			// continue if load is lazy and we are resolving relationships of related documents
+			// if field.key not in selected fields and selected fields length > 0
+			// do not check the field for relations
+			if len(selectedFields) > 0 && indexOfString(selectedFields, field.name) < 0 {
+				continue
+			}
+			// continue to the next field with relation if load is lazy and we are resolving relationships of related documents
 			if !top && field.relation.load == lazy {
 				continue
 			}
@@ -668,7 +673,7 @@ func (manager *defaultDocumentManager) doResolveRelations(documents interface{},
 							return ErrFieldNotFound
 						}
 						// we have a list of source document ids, let's fetch the related documents
-						if err = manager.GetDB().C(relatedMeta.targetDocument).Find(bson.M{"_id": bson.M{"$nin": documentIds}, relatedField.key: bson.M{"$in": documentIds}}).Select(bson.M{"_id": 1, relatedField.key: 1}).All(&relatedDocumentMaps); err != nil && err != mgo.ErrNotFound {
+						if err = manager.GetDB().C(relatedMeta.targetDocument).Find(bson.M{"_id": bson.M{"$nin": documentIds}, relatedField.key: bson.M{"$in": documentIds}}).Select(bson.M{"_id": 1, relatedField.key: 1}).All(&relatedDocumentMaps); err != nil {
 							return err
 						}
 						// 2 cases here. if the related documents reference many then we need to search through an array
@@ -718,7 +723,10 @@ func (manager *defaultDocumentManager) doResolveRelations(documents interface{},
 						}
 						// let's now add each related mapped document
 						for documentID, value := range sourceValuesKeyedBySourceID {
-							value.Elem().FieldByName(field.name).Set(relatedDocumentsMappedByDocumentID[documentID])
+							// if related document exists
+							if relatedDocument, ok := relatedDocumentsMappedByDocumentID[documentID]; ok {
+								value.Elem().FieldByName(field.name).Set(relatedDocument)
+							}
 						}
 						// let's resolve the possible relations in the related documents we just fetched
 						if err = manager.doResolveRelations(relatedDocuments.Interface(), fetchedDocuments); err != nil {
@@ -730,7 +738,7 @@ func (manager *defaultDocumentManager) doResolveRelations(documents interface{},
 
 						// the documents reference one related document
 						results := []map[string]interface{}{}
-						if err = manager.GetDB().C(meta.targetDocument).Find(bson.M{"_id": bson.M{"$in": documentIds}}).Select(bson.M{field.key: 1, "_id": 1}).All(&results); err != nil && err != mgo.ErrNotFound {
+						if err = manager.GetDB().C(meta.targetDocument).Find(bson.M{field.key: bson.M{"$exists": true}, "_id": bson.M{"$in": documentIds}}).Select(bson.M{field.key: 1, "_id": 1}).All(&results); err != nil && err != mgo.ErrNotFound {
 							return err
 						}
 						resultsKeyedByObjectID := keyResultsBySourceID(results, func(result map[string]interface{}) bson.ObjectId {
@@ -740,9 +748,10 @@ func (manager *defaultDocumentManager) doResolveRelations(documents interface{},
 						// search in fetched documents if the relation can already be satisified
 						// if yes then set the field of the related doc to the fetched document
 						for objectID, result := range resultsKeyedByObjectID {
-							relatedObjectID := result[field.key].(bson.ObjectId)
-							if document, ok := fetchedDocuments[relatedObjectID]; ok {
-								sourceValuesKeyedBySourceID[objectID].Elem().FieldByName(field.name).Set(reflect.ValueOf(document))
+							if relatedObjectID, ok := result[field.key].(bson.ObjectId); ok {
+								if document, ok := fetchedDocuments[relatedObjectID]; ok {
+									sourceValuesKeyedBySourceID[objectID].Elem().FieldByName(field.name).Set(reflect.ValueOf(document))
+								}
 							}
 						}
 						// we don't need the object ids that have already been fetched
@@ -1055,6 +1064,9 @@ const (
 	eager
 )
 
+// cascade sets the behavior of related documents when
+// a document is removed or saved. Related documents can be automatically
+// removed or saved when the source document is removed or saved.
 type cascade int
 
 const (
@@ -1064,6 +1076,8 @@ const (
 	remove
 )
 
+// task is a pending task which is executed when DocumentManager.Flush
+// is called.
 type task int
 
 const (
@@ -1317,42 +1331,35 @@ func metadataToString(meta metadata) string {
 
 var (
 	keyValuesByObjectID func(collection []reflect.Value, selector func(reflect.Value) bson.ObjectId) map[bson.ObjectId]reflect.Value
-
-	_ = funcs.Must(funcs.MakeKeyBy(&keyValuesByObjectID))
+	_                   = funcs.Must(funcs.MakeKeyBy(&keyValuesByObjectID))
 
 	getKeys func(map[bson.ObjectId]reflect.Value) []bson.ObjectId
-
-	_ = funcs.Must(funcs.MakeGetKeys(&getKeys))
+	_       = funcs.Must(funcs.MakeGetKeys(&getKeys))
 
 	flatten func([][]interface{}) []interface{}
-
-	_ = funcs.Must(funcs.MakeFlatten(&flatten))
+	_       = funcs.Must(funcs.MakeFlatten(&flatten))
 
 	mapResultsToInterfaces func([]map[string]interface{}, func(map[string]interface{}) []interface{}) [][]interface{}
-
-	_ = funcs.Must(funcs.MakeMap(&mapResultsToInterfaces))
+	_                      = funcs.Must(funcs.MakeMap(&mapResultsToInterfaces))
 
 	keyResultsBySourceID func(results []map[string]interface{}, mapper func(result map[string]interface{}) (id bson.ObjectId)) map[bson.ObjectId]map[string]interface{}
-
-	_ = funcs.Must(funcs.MakeKeyBy(&keyResultsBySourceID))
+	_                    = funcs.Must(funcs.MakeKeyBy(&keyResultsBySourceID))
 
 	mapResultsToRelatedObjectIds func(results []map[string]interface{}, mapper func(result map[string]interface{}) bson.ObjectId) []bson.ObjectId
-
-	_ = funcs.Must(funcs.MakeMap(&mapResultsToRelatedObjectIds))
+	_                            = funcs.Must(funcs.MakeMap(&mapResultsToRelatedObjectIds))
 
 	keyRelatedResultsByObjectID func(results []reflect.Value, mapper func(result reflect.Value) bson.ObjectId) map[bson.ObjectId]reflect.Value
-
-	_ = funcs.Must(funcs.MakeKeyBy(&keyRelatedResultsByObjectID))
+	_                           = funcs.Must(funcs.MakeKeyBy(&keyRelatedResultsByObjectID))
 
 	mapInterfacesToObjectIds func([]interface{}, func(interface{}) bson.ObjectId) []bson.ObjectId
-
-	_ = funcs.Must(funcs.MakeMap(&mapInterfacesToObjectIds))
+	_                        = funcs.Must(funcs.MakeMap(&mapInterfacesToObjectIds))
 
 	filter func([]bson.ObjectId, func(id bson.ObjectId) bool) []bson.ObjectId
-
-	_ = funcs.Must(funcs.MakeFilter(&filter))
+	_      = funcs.Must(funcs.MakeFilter(&filter))
 
 	indexOf func([]interface{}, interface{}) int
+	_       = funcs.Must(funcs.MakeIndexOf(&indexOf))
 
-	_ = funcs.Must(funcs.MakeIndexOf(&indexOf))
+	indexOfString func([]string, string) int
+	_             = funcs.Must(funcs.MakeIndexOf(&indexOfString))
 )
