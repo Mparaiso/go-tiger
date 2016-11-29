@@ -23,6 +23,12 @@ https://github.com/dsmontoya/marango
 
 https://github.com/maxwellhealth/bongo
 
+#### related projects:
+
+https://github.com/search?l=JavaScript&p=2&q=odm&type=Repositories&utf8=%E2%9C%93
+
+https://docs.mongodb.com/ruby-driver/master/tutorials/6.0.0/mongoid-relations/
+
 #### basic usage
 
 ```go
