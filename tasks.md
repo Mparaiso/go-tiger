@@ -5,6 +5,34 @@ x = done
 
 priorities : H = high , L = low
 
+orm
+
+orm will be strongly influenced by doctrine orm
+Some go orms to take inspiration from 
+
+- [gorm](http://jinzhu.me/gorm/)
+- [gorp](https://github.com/go-gorp/gorp)
+- [jet](https://github.com/eaigner/jet)
+- [hood](https://github.com/eaigner/hood)
+- [sqlx](https://github.com/jmoiron/sqlx)
+- [pop](https://godoc.org/github.com/markbates/pop)
+- [upper2](https://upper.io/db.v2/)
+- [upper1](https://upper.io/db.v1/)
+- [sqlboilder](https://github.com/vattle/sqlboiler)
+- [beego](https://beego.me/docs/mvc/model/overview.md)
+- [xorm](https://github.com/go-xorm/xorm)
+- [beedb](https://github.com/astaxie/beedb)
+- [reform](https://github.com/go-reform/reform)
+- [qbs](https://github.com/coocood/qbs)
+- [vivom](https://github.com/oguzbilgic/vivom)
+- [spiffy](https://github.com/blendlabs/spiffy)
+- [goSQL](https://github.com/quintans/goSQL)
+- [dbr](https://github.com/gocraft/dbr)
+
+interesting packages :
+
+- [ql](https://github.com/cznic/ql) a pure go SQL database
+ 
 funcs
 
 - [x] add funcs.MakeEvery
