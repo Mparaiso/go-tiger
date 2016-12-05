@@ -22,6 +22,218 @@ for custom type assertions is a work in progress.
 */
 package acl
 
+import (
+	"errors"
+	"github.com/google/uuid"
+	"time"
+)
+
+type Acl struct {
+	storage Storage
+}
+
+func NewACLWithStorage(storage Storage) *Acl {
+	return &Acl{storage: storage}
+}
+func NewAcl() *Acl {
+	return &Acl{storage: newDefaultStorage()}
+}
+
+func (ACL *Acl) SaveAro(group *Group) error {
+	return ACL.SaveAco(group)
+}
+
+func (ACL *Acl) SaveAco(group *Group) error {
+	return ACL.storage.SaveAco(group)
+}
+
+func (ACL *Acl) GetAroByID(id interface{}) (*Group, error) {
+	return ACL.storage.GetAroByID(id)
+}
+
+func (ACL *Acl) GetAroByAlias(alias string) (*Group, error) {
+	return ACL.storage.GetAroByAlias(alias)
+}
+
+func (ACL *Acl) GetAcoByID(id interface{}) (*Group, error) {
+	return ACL.storage.GetAcoByID(id)
+}
+
+func (ACL *Acl) GetAcoByAlias(alias string) (*Group, error) {
+	return ACL.storage.GetAcoByAlias(alias)
+}
+
+func (ACL *Acl) FindRule(aro *Group, aco *Group, action string) (Rule, error) {
+	return Rule{}, nil
+}
+func (ACL *Acl) Allow(aro *Group, aco *Group, actions ...string) error { return nil }
+func (ACL *Acl) Deny(aro *Group, aco *Group, actions ...string) error  { return nil }
+func (ACL *Acl) Check(accessRequestObject *Group, accessControlObject *Group, action string) error {
+	var (
+		aro  *Group
+		aco  *Group
+		err  error
+		rule Rule
+	)
+
+	aro, err = ACL.GetAroByID(accessRequestObject.ID)
+	if err != nil && err != ErrGroupNotFound {
+		return err
+	} else if err == ErrGroupNotFound {
+		aro, err = ACL.GetAroByAlias(accessRequestObject.Alias)
+		if err != nil {
+			return err
+		}
+	}
+	aco, err = ACL.GetAcoByID(accessControlObject.ID)
+	if err != nil && err != ErrGroupNotFound {
+		return err
+	} else if err == ErrGroupNotFound {
+		aro, err = ACL.GetAcoByAlias(accessRequestObject.Alias)
+		if err != nil {
+			return err
+		}
+	}
+	if rule, err = ACL.FindRule(aro, aco, action); err != nil {
+		return err
+	}
+	if rule.Type == Deny {
+		return ErrAccessDenied
+	}
+	return nil
+}
+
+type Storage interface {
+	SaveAro(*Group) error
+	SaveAco(*Group) error
+	SaveRule(Rule) error
+	GetAroByID(id interface{}) (*Group, error)
+	GetAroByAlias(alias string) (*Group, error)
+	GetAcoByID(id interface{}) (*Group, error)
+	GetAcoByAlias(alias string) (*Group, error)
+}
+
+type defaultStorage struct {
+	aros  groups
+	acos  groups
+	rules rules
+}
+
+func newDefaultStorage() *defaultStorage {
+	storage := new(defaultStorage)
+	storage.aros = groups{}
+	storage.acos = groups{}
+	storage.rules = rules{}
+	return storage
+}
+
+func (storage *defaultStorage) SaveRule(rule Rule) error {
+	return storage.rules.save(rule)
+}
+
+func (storage *defaultStorage) SaveAro(group *Group) error {
+	return storage.aros.save(group)
+}
+
+func (storage *defaultStorage) SaveAco(group *Group) error {
+	return storage.acos.save(group)
+}
+
+func (storage *defaultStorage) GetAroByID(id interface{}) (*Group, error) {
+	return storage.aros.getById(id)
+}
+
+func (storage *defaultStorage) GetAroByAlias(alias string) (*Group, error) {
+	return storage.aros.getByAlias(alias)
+}
+
+func (storage *defaultStorage) GetAcoByID(id interface{}) (*Group, error) {
+	return storage.acos.getById(id)
+}
+
+func (storage *defaultStorage) GetAcoByAlias(alias string) (*Group, error) {
+	return storage.acos.getByAlias(alias)
+}
+
+type groups map[interface{}]*Group
+
+func (g groups) save(group *Group) error {
+	if g == nil {
+		gptr := &g
+		*gptr = map[interface{}]*Group{}
+	}
+	if group.ID == nil {
+		group.ID = uuid.New().String()
+	}
+	g[group.ID] = group
+	return nil
+}
+func (g groups) getByAlias(alias string) (*Group, error) {
+	for _, group := range g {
+		if alias == group.Alias {
+			return group, nil
+		}
+	}
+	return zeroGroup, ErrGroupNotFound
+}
+
+func (g groups) getById(id interface{}) (*Group, error) {
+	return g[id], nil
+}
+
+type rules map[interface{}]Rule
+
+func (r rules) save(rule Rule) error {
+	if r == nil {
+		rptr := &r
+		*rptr = map[interface{}]Rule{}
+	}
+	if rule.ID == nil {
+		rule.ID = uuid.New().String()
+	}
+	r[rule.ID] = rule
+	return nil
+}
+
+func (r rules) getById(id interface{}) (Rule, error) {
+	return r[id], nil
+}
+
+// Group either represents an access control object or an access request object
+type Group struct {
+	ID         interface{}
+	Alias      string
+	Model      string
+	ParentID   interface{}
+	ForeignKey interface{}
+}
+
+type Rule struct {
+	ID      interface{}
+	AroID   interface{}
+	AcoID   interface{}
+	Created time.Time
+	Right   string
+	Type    Type
+}
+
+func String(s string) *Group {
+	return &Group{Alias: s}
+}
+
+type Type byte
+
+const (
+	Deny Type = iota
+	Allow
+)
+
+var (
+	ErrGroupNotFound = errors.New("ErrGroupNotFound : Error Group not found")
+	ErrAccessDenied  = errors.New("ErrAccessDenied : Error access denied")
+)
+
+/*
 // Type is a rule type
 type Type string
 
@@ -247,15 +459,15 @@ func (acl *ACL) IsAllowed(role Role, resource Resource, privileges ...string) bo
 
 func (acl *ACL) isAllowed(role Role, resource Resource, privilege string) bool {
 	for _, rule := range acl.Rules {
-		if ((rule.Role != nil && role != nil) && /* if neither roles are nil , then either the roles are equal or role inherits from rule.Role */
+		if ((rule.Role != nil && role != nil) && // if neither roles are nil , then either the roles are equal or role inherits from rule.Role
 			((role.GetRoleID() == rule.GetRoleID()) ||
 				acl.InheritsRole(role, rule.Role))) ||
-			rule.Role == nil { /* or rule.Role is nil so rule applies to all roles */
-			if ((rule.Resource != nil && resource != nil) && /* if neither resources are nil and */
+			rule.Role == nil { // or rule.Role is nil so rule applies to all roles
+			if ((rule.Resource != nil && resource != nil) && // if neither resources are nil and
 				((rule.GetResourceID() == resource.GetResourceID()) || acl.InheritsResource(resource, rule.Resource))) ||
-				/* either both resources are equal OR resource inherits from rule.Resource */
-				(rule.Resource == nil) { /* or the rule applies to app resources */
-				if rule.AllPrivileges || rule.Privilege == privilege { /* if this rule applies to all priviledges OR priviledges are equal */
+				// either both resources are equal OR resource inherits from rule.Resource
+				(rule.Resource == nil) { // or the rule applies to app resources
+				if rule.AllPrivileges || rule.Privilege == privilege { // if this rule applies to all priviledges OR priviledges are equal
 					if rule.Type == Deny {
 						return false
 					}
@@ -341,3 +553,5 @@ func (resource defaultResource) GetResourceID() string {
 type Assertion interface {
 	Assert(acl ACL, role Role, resource Resource, permission string)
 }
+
+*/

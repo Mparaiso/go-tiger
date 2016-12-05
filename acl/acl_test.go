@@ -16,6 +16,122 @@ package acl_test
 
 import (
 	"fmt"
+	"github.com/Mparaiso/go-tiger/acl"
+)
+
+func Example() {
+	// http: //book.cakephp.org/2.0/en/core-libraries/components/access-control-lists.html#creating-access-request-objects-aros-and-access-control-objects-acos
+	Acl := acl.NewAcl()
+	groups := []acl.Group{{Alias: "warrior"}, {Alias: "wizard"}, {Alias: "hobbits"}, {Alias: "visitors"}}
+	for _, group := range groups {
+		Acl.SaveAro(group)
+	}
+	users := []acl.Group{
+		{
+			Alias:      "Aragorn",
+			ParentID:   1,
+			Model:      "User",
+			ForeignKey: 2356,
+		},
+		{
+			Alias:      "Legolas",
+			ParentID:   1,
+			Model:      "User",
+			ForeignKey: 6342,
+		},
+		{
+			Alias:      "Gimli",
+			ParentID:   1,
+			Model:      "User",
+			ForeignKey: 1564,
+		},
+		{
+			Alias:      "Gandalf",
+			ParentID:   2,
+			Model:      "User",
+			ForeignKey: 7419,
+		},
+		{
+			Alias:      "Frodo",
+			ParentID:   3,
+			Model:      "User",
+			ForeignKey: 7451,
+		},
+		{
+			Alias:      "Bilbo",
+			ParentID:   3,
+			Model:      "User",
+			ForeignKey: 5126,
+		},
+		{
+			Alias:      "Merry",
+			ParentID:   3,
+			Model:      "User",
+			ForeignKey: 5144,
+		},
+		{
+			Alias:      "Pippin",
+			ParentID:   3,
+			Model:      "User",
+			ForeignKey: 1211,
+		},
+		{
+			Alias:      "Gollum",
+			ParentID:   4,
+			Model:      "User",
+			ForeignKey: 1337,
+		},
+	}
+	for _, user := range users {
+		Acl.SaveAro(user)
+	}
+	resources := []acl.Group{{Alias: "Weapons"}, {Alias: "Rings"}, {Alias: "PorkChops"}, {Alias: "DiplomaticEfforts"}, {Alias: "Ales"}}
+	for _, resource := range resources {
+		Acl.SaveAco(resource)
+	}
+	Acl.Allow(acl.String("warriors"), acl.String("Weapons"))
+	Acl.Deny(acl.String("warriors/Legolas"), acl.String("Weapons"), "delete")
+	Acl.Deny(acl.String("warriors/Gimli"), acl.String("Weapons"), "delete")
+	// alternative syntax
+	Acl.Deny(acl.Group{Model: "User", ForeignKey: 3439}, acl.String("Weapons"), "delete")
+	Acl.Deny(acl.Group{Model: "User", ForeignKey: 439}, acl.String("Weapons"), "delete")
+	// Checking Permissions
+	// http://book.cakephp.org/2.0/en/core-libraries/components/access-control-lists.html#checking-permissions-the-acl-component
+
+	fmt.Println(Acl.Check(acl.String("warriors/Aragorn"), acl.String("Weapons")))
+	fmt.Println(Acl.Check(acl.String("warriors/Aragorn"), acl.String("Weapons"), "create"))
+	fmt.Println(Acl.Check(acl.String("warriors/Aragorn"), acl.String("Weapons"), "read"))
+	fmt.Println(Acl.Check(acl.String("warriors/Aragorn"), acl.String("Weapons"), "update"))
+	fmt.Println(Acl.Check(acl.String("warriors/Aragorn"), acl.String("Weapons"), "delete"))
+
+	// Remember, we can use the model/id syntax
+	// for our user AROs
+	fmt.Println(Acl.Check(acl.Group{Model: "User", ID: 2356}, acl.String("Weapons")))
+
+	// These also return true:
+	fmt.Println(Acl.Check(acl.String("warriors/Legolas"), acl.String("Weapons"), "create"))
+	fmt.Println(Acl.Check(acl.String("warriors/Gimli"), acl.String("Weapons"), "read"))
+
+	// But these return false:
+	fmt.Println(Acl.Check(acl.String("warriors/Legolas"), acl.String("Weapons"), "delete"))
+	fmt.Println(Acl.Check(acl.String("warriors/Gimli"), acl.String("Weapons"), "delete"))
+
+	// Output:
+	// <nil>
+	// <nil>
+	// <nil>
+	// <nil>
+	// <nil>
+	// <nil>
+	// <nil>
+	// <nil>
+	// ErrAccessDenied : Error access denied
+	// ErrAccessDenied : Error access denied
+}
+
+/*
+import (
+	"fmt"
 	"testing"
 
 	"github.com/Mparaiso/go-tiger/acl"
@@ -73,9 +189,9 @@ func TestACL(t *testing.T) {
 	test.Error(t, list.IsAllowed(roles["administrator"], nil), true)
 	test.Error(t, list.IsAllowed(roles["administrator"], nil, "update"), true)
 
-	/** Precise Access Controls
-	 * @link https://framework.zend.com/manual/1.12/en/zend.acl.refining.html
-	 */
+	// Precise Access Controls
+	 // @link https://framework.zend.com/manual/1.12/en/zend.acl.refining.html
+	 //
 	roles["marketing"] = acl.NewRole("marketing")
 	list.AddRole(roles["marketing"], roles["staff"])
 
@@ -112,3 +228,5 @@ func ternary(predicate bool, TrueValue interface{}, FalseValue interface{}) inte
 	}
 	return FalseValue
 }
+
+*/
