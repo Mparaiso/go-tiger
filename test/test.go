@@ -17,6 +17,7 @@ package test
 import (
 	"fmt"
 	"log"
+	"reflect"
 	"runtime"
 
 	"github.com/Mparaiso/go-tiger/logger"
@@ -57,7 +58,7 @@ type Tester interface {
 // Fatal is a helper used to reduce the boilerplate during tests
 func Fatal(t Tester, got, want interface{}, comments ...string) {
 	var comment string
-	if want != got {
+	if !reflect.DeepEqual(want, got) {
 		if len(comments) > 0 {
 			comment = comments[0]
 
@@ -72,7 +73,7 @@ func Fatal(t Tester, got, want interface{}, comments ...string) {
 // FatalWithDiff is like test.Fatal with a textual diff between the 2 results
 func FatalWithDiff(t Tester, got, want interface{}, comments ...string) {
 	var comment string
-	if want != got {
+	if !reflect.DeepEqual(want, got) {
 		if len(comments) > 0 {
 			comment = comments[0]
 
@@ -89,7 +90,7 @@ func FatalWithDiff(t Tester, got, want interface{}, comments ...string) {
 // ErrorWithDiff is like test.Error with a textual diff between the 2 results
 func ErrorWithDiff(t Tester, got, want interface{}, comments ...string) {
 	var comment string
-	if want != got {
+	if !reflect.DeepEqual(want, got) {
 		if len(comments) > 0 {
 			comment = comments[0]
 
@@ -106,7 +107,7 @@ func ErrorWithDiff(t Tester, got, want interface{}, comments ...string) {
 // Error is a helper used to reduce the boilerplate during tests
 func Error(t Tester, got, want interface{}, comments ...string) {
 	var comment string
-	if want != got {
+	if !reflect.DeepEqual(want, got) {
 		if len(comments) > 0 {
 			comment = comments[0]
 
