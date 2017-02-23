@@ -15,11 +15,44 @@ package web_test
 
 import (
 	"fmt"
+	app "github.com/Mparaiso/go-tiger/web"
 	"net/http"
 	"net/http/httptest"
-
-	app "github.com/Mparaiso/go-tiger/web"
+	"testing"
 )
+
+func BenchmarkRouter_ServeHTTP(b *testing.B) {
+	router := app.NewRouter()
+	for i := 0; i < 1000; i++ {
+		router.Get(fmt.Sprint("/", i), func(c app.Container) {})
+	}
+	router.Get("/foobar", func(c app.Container) {
+		c.GetResponseWriter().Write([]byte("Hello World"))
+	})
+	handler := router.Compile()
+	request, _ := http.NewRequest("GET", "https://example.com/foobar", nil)
+	response := httptest.NewRecorder()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		handler.ServeHTTP(response, request)
+	}
+}
+
+func BenchmarkDefaultServeMux_ServeHTTP(b *testing.B) {
+	handler := http.NewServeMux()
+	request, _ := http.NewRequest("GET", "https://example.com/foobar", nil)
+	response := httptest.NewRecorder()
+	for i := 0; i < 1000; i++ {
+		handler.HandleFunc(fmt.Sprint("/", i), func(rw http.ResponseWriter, r *http.Request) {})
+	}
+	handler.HandleFunc("/foobar", func(rw http.ResponseWriter, r *http.Request) {
+		rw.Write([]byte("Hello World"))
+	})
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		handler.ServeHTTP(response, request)
+	}
+}
 
 func ExampleRouter() {
 	router := app.NewRouter()

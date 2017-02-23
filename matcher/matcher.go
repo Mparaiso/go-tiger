@@ -16,8 +16,10 @@ package matcher
 
 import (
 	"net/http"
+
 	"path"
 	"regexp"
+	"strings"
 )
 
 type contextKeys int8
@@ -42,8 +44,8 @@ func Pattern(pattern, pathPrefix string, queryValuePrefix ...string) *RegexpMatc
 	re := regexp.MustCompile(`:(\w+)`)
 	// re2 matches words with "/"
 	re2 := regexp.MustCompile(`:\*(\w+)$`)
-	pattern = re.ReplaceAllString(pattern, "(?P<${1}>[^\\s /]+)")
-	pattern = re2.ReplaceAllString(pattern, "(?P<${1}>[^\\s]+)")
+	pattern = re.ReplaceAllString(pattern, "(?P<${1}>[^/]+)")
+	pattern = re2.ReplaceAllString(pattern, "(?P<${1}>.+)")
 	// add the pathPrefix at the beginning of the pattern
 	pattern = path.Join("^/", regexp.QuoteMeta(pathPrefix), pattern, "/?$")
 	if pattern == "^/?" {
@@ -96,6 +98,68 @@ func (matcher *URLMatcher) Match(r *http.Request) bool {
 		return true
 	}
 	return false
+}
+
+// FastMatcher is equivalent to RegexpMatcher aside from not using regular expressions
+// to match routes.
+type FastMatcher struct {
+	parts  []string
+	prefix string
+	// true if the last part of the pattern is like :*variable
+	hasTerminalWildCard bool
+}
+
+// NewFastMatcher returns a FastMatcher.
+// Patterns : /:foo/:bar or /somepath/:foo/:bar/baz
+// :foo and :bar can be any valid URL character excluding "/".
+// A wildcard variable is allowed as a last variable to match file paths containing /
+// Example: /public_assets/:*filepath
+func NewFastMatcher(pattern string, queryValuePrefix string) Matcher {
+	parts := strings.Split(strings.TrimSuffix(strings.TrimSpace(pattern), "/"), "/")
+	if queryValuePrefix == "" {
+		queryValuePrefix = ":"
+	}
+	matcher := FastMatcher{parts: parts, prefix: queryValuePrefix}
+	if strings.HasPrefix(parts[len(parts)-1], ":*") {
+		matcher.hasTerminalWildCard = true
+	}
+	return matcher
+}
+
+// Match matches a request against the matcher
+func (matcher FastMatcher) Match(request *http.Request) bool {
+	paths := strings.SplitN(request.URL.Path, "/", len(matcher.parts))
+	queryArgs := request.URL.Query()
+	for index, part := range matcher.parts {
+		// if last part of path, then wildcard allowed
+		if index == len(paths)-1 {
+			if matcher.hasTerminalWildCard {
+				queryArgs.Set(matcher.prefix+strings.TrimPrefix(part, ":*"), paths[index])
+				continue
+			}
+			if s := strings.TrimSuffix(paths[index], "/"); strings.HasPrefix(part, ":") {
+				if strings.Contains(s, "/") {
+					return false
+				}
+				queryArgs.Set(matcher.prefix+strings.TrimPrefix(part, ":"), s)
+				continue
+			}
+			if part != paths[index] {
+				return false
+			}
+		} else {
+			// else only non-wildcard matches are allowed
+			if strings.HasPrefix(part, ":") {
+				queryArgs.Set(matcher.prefix+strings.TrimPrefix(part, ":"), paths[index])
+				continue
+			}
+			if part != paths[index] {
+				return false
+			}
+		}
+	}
+	request.URL.RawQuery = queryArgs.Encode()
+	return true
 }
 
 // RegexpMatcher matches a path against a regexp
@@ -159,7 +223,7 @@ func (r DefaultMatcherProvider) GetMatchers() Matchers {
 	return r.Matchers
 }
 
-// Routes are a collection of routes
+// MatcherProviders are a collection of MatcherProvider
 type MatcherProviders []MatcherProvider
 
 // Router routes requests to routes
