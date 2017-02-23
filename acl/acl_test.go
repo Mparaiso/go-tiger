@@ -16,17 +16,18 @@ package acl_test
 
 import (
 	"fmt"
+
 	"github.com/Mparaiso/go-tiger/acl"
 )
 
 func Example() {
 	// http: //book.cakephp.org/2.0/en/core-libraries/components/access-control-lists.html#creating-access-request-objects-aros-and-access-control-objects-acos
 	Acl := acl.NewAcl()
-	groups := []acl.Group{{Alias: "warrior"}, {Alias: "wizard"}, {Alias: "hobbits"}, {Alias: "visitors"}}
+	groups := []*acl.Group{{Alias: "warrior", ID: 1}, {Alias: "wizard", ID: 2}, {Alias: "hobbits", ID: 3}, {Alias: "visitors", ID: 4}}
 	for _, group := range groups {
 		Acl.SaveAro(group)
 	}
-	users := []acl.Group{
+	users := []*acl.Group{
 		{
 			Alias:      "Aragorn",
 			ParentID:   1,
@@ -85,7 +86,7 @@ func Example() {
 	for _, user := range users {
 		Acl.SaveAro(user)
 	}
-	resources := []acl.Group{{Alias: "Weapons"}, {Alias: "Rings"}, {Alias: "PorkChops"}, {Alias: "DiplomaticEfforts"}, {Alias: "Ales"}}
+	resources := []*acl.Group{{Alias: "Weapons"}, {Alias: "Rings"}, {Alias: "PorkChops"}, {Alias: "DiplomaticEfforts"}, {Alias: "Ales"}}
 	for _, resource := range resources {
 		Acl.SaveAco(resource)
 	}
@@ -93,12 +94,12 @@ func Example() {
 	Acl.Deny(acl.String("warriors/Legolas"), acl.String("Weapons"), "delete")
 	Acl.Deny(acl.String("warriors/Gimli"), acl.String("Weapons"), "delete")
 	// alternative syntax
-	Acl.Deny(acl.Group{Model: "User", ForeignKey: 3439}, acl.String("Weapons"), "delete")
-	Acl.Deny(acl.Group{Model: "User", ForeignKey: 439}, acl.String("Weapons"), "delete")
+	Acl.Deny(&acl.Group{Model: "User", ForeignKey: 3439}, acl.String("Weapons"), "delete")
+	Acl.Deny(&acl.Group{Model: "User", ForeignKey: 439}, acl.String("Weapons"), "delete")
 	// Checking Permissions
 	// http://book.cakephp.org/2.0/en/core-libraries/components/access-control-lists.html#checking-permissions-the-acl-component
 
-	fmt.Println(Acl.Check(acl.String("warriors/Aragorn"), acl.String("Weapons")))
+	fmt.Println(Acl.Check(acl.String("warriors/Aragorn"), acl.String("Weapons"), "*"))
 	fmt.Println(Acl.Check(acl.String("warriors/Aragorn"), acl.String("Weapons"), "create"))
 	fmt.Println(Acl.Check(acl.String("warriors/Aragorn"), acl.String("Weapons"), "read"))
 	fmt.Println(Acl.Check(acl.String("warriors/Aragorn"), acl.String("Weapons"), "update"))
@@ -106,7 +107,7 @@ func Example() {
 
 	// Remember, we can use the model/id syntax
 	// for our user AROs
-	fmt.Println(Acl.Check(acl.Group{Model: "User", ID: 2356}, acl.String("Weapons")))
+	fmt.Println(Acl.Check(&acl.Group{Model: "User", ID: 2356}, acl.String("Weapons"), "*"))
 
 	// These also return true:
 	fmt.Println(Acl.Check(acl.String("warriors/Legolas"), acl.String("Weapons"), "create"))

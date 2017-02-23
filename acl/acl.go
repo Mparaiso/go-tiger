@@ -24,8 +24,9 @@ package acl
 
 import (
 	"errors"
-	"github.com/google/uuid"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type Acl struct {
@@ -174,7 +175,7 @@ func (g groups) getByAlias(alias string) (*Group, error) {
 			return group, nil
 		}
 	}
-	return zeroGroup, ErrGroupNotFound
+	return new(Group), ErrGroupNotFound
 }
 
 func (g groups) getById(id interface{}) (*Group, error) {
