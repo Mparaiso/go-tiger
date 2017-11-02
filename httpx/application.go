@@ -193,7 +193,7 @@ func (a Application) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	for i := len(route.filters) - 1; i >= 0; i-- {
 		handler = route.filters[i](handler)
 	}
-	WithValue(r, map[interface{}]interface{}{CurrentRoute: route, RequestID: uuid()})
+	WithValue(r, map[key]interface{}{CurrentRoute: route, RequestID: uuid()})
 	handler(w, r)
 
 }
@@ -246,7 +246,7 @@ func WithMethod(methods ...string) RouteOption {
 	}}
 }
 
-func WithValue(request *http.Request, values map[interface{}]interface{}) {
+func WithValue(request *http.Request, values map[key]interface{}) {
 	for key, value := range values {
 		*request = *(request.WithContext(context.WithValue(request.Context(), key, value)))
 	}
